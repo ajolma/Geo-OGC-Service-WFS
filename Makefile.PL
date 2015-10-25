@@ -5,7 +5,18 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'Geo::OGC::Service::WFS',
     VERSION_FROM      => 'lib/Geo/OGC/Service/WFS.pm', # finds $VERSION, requires EU::MM from perl >= 5.5
-    PREREQ_PM         => {}, # e.g., Module::Name => 1.1
+    PREREQ_PM         => { "File::Basename" => 0,
+                           "Capture::Tiny" => 0,
+                           "Clone" => 0,
+                           "JSON" => 0,
+                           "DBI" => 0,
+                           "Geo::GDAL" => 2.1, # we need a working vsistdout implementation
+                           "Geo::OGC::Service" => 0.02, # 0.01 had a silly mistake
+    },
+    TEST_REQUIRES     => { "Plack::Test" => 0,
+                           "HTTP::Request::Common" => 0,
+                           "XML::LibXML" => 0,
+                           "XML::SemanticDiff" => 0 },
     ABSTRACT_FROM     => 'lib/Geo/OGC/Service/WFS.pm', # retrieve abstract from module
     AUTHOR            => 'Ari Jolma <ari.jolma at gmail.com>',
     LICENSE           => 'perl'
