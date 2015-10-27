@@ -79,6 +79,29 @@ our %spatial2op = (
     Contains => 1
     ); # there are more in PostGIS
 
+# GDAL and PostgreSQL data type to XML data type
+our %type_map = (
+    geometry => "gml:GeometryPropertyType",
+    Short => "xs:short",
+    Integer => "xs:integer",
+    Integer64 => "xs:long",
+    Real => "xs:double",
+    integer => "xs:integer",
+    int => "xs:integer",
+    bigint => "xs:long",
+    decimal => "xs:decimal",
+    numeric => "xs:decimal",
+    real => "xs:float",
+    double => "xs:double",
+    "double precision" => "xs:decimal",
+    timestamp => "xs:date",
+    "timestamp with time zone" => "xs:date",
+    date => "xs:date",
+    time => "xs:time",
+    "time with time zone" => "xs:time",
+    boolean => "xs:boolean",
+    );
+
 =pod
 
 =head3 process_request
@@ -416,13 +439,17 @@ Service the DescribeFeatureType request.
 sub DescribeFeatureType {
     my ($self) = @_;
 
-    unless ($self->{request}{queries}[0]{typename}) {
+    my @typenames;
+    for my $query (@{$self->{request}{queries}}) {
+        push @typenames, split(/\s*,\s*/, $query->{typename});
+    }
+
+    unless (@typenames) {
         $self->error({ exceptionCode => 'MissingParameterValue',
                        locator => 'typeName' });
         return;
     }
-
-    my @typenames = split(/\s*,\s*/, $self->{request}{queries}[0]{typename});
+    
     my %types;
 
     for my $name (@typenames) {
@@ -451,62 +478,33 @@ sub DescribeFeatureType {
         { namespace => "http://www.opengis.net/gml",
           schemaLocation => "http://schemas.opengis.net/gml/2.1.2/feature.xsd" } );
 
-    # GDAL and PostgreSQL data type to XML data type
-    my %type_map = (
-        geometry => "gml:GeometryPropertyType",
-        Short => "xs:short",
-        Integer => "xs:integer",
-        Integer64 => "xs:long",
-        Real => "xs:double",
-        integer => "xs:integer",
-        int => "xs:integer",
-        bigint => "xs:long",
-        decimal => "xs:decimal",
-        numeric => "xs:decimal",
-        real => "xs:float",
-        double => "xs:double",
-        "double precision" => "xs:decimal",
-        timestamp => "xs:date",
-        "timestamp with time zone" => "xs:date",
-        date => "xs:date",
-        time => "xs:time",
-        "time with time zone" => "xs:time",
-        boolean => "xs:boolean",
-        );
-
     for my $name (sort keys %types) {
         my $type = $types{$name};
+        next if $type->{"gml:id"} && $type->{Name} eq $type->{"gml:id"};
 
         my ($pseudo_credentials) = pseudo_credentials($type);
         my @elements;
-        for my $column_name (keys %{$type->{Schema}}) {
+        for my $property (keys %{$type->{Schema}}) {
 
-            next if $pseudo_credentials->{$column_name};
-
-            my $column_type = $type_map{$type->{Schema}{$column_name}} // 'xs:string';
-
-            $column_name =~ s/ /_/g; # field name adjustments as GDAL does them
-            $column_name =~ s/ä/a/g; # extra name adjustments, needed by QGIS
-            $column_name =~ s/ö/o/g;
-            # GDAL will use geometryProperty for geometry elements when producing GML:
-            $column_name = 'geometryProperty' if $column_type eq 'gml:GeometryPropertyType';
+            next if $pseudo_credentials->{$property};
 
             my $minOccurs = 0;
             push @elements, ['element', 
-                             { name => $column_name,
-                               type => $column_type,
+                             { name => $type->{Schema}{$property}{out_name},
+                               type => $type->{Schema}{$property}{out_type},
                                minOccurs => "$minOccurs",
                                maxOccurs => "1" } ];
+
         }
         $writer->element(
-            'complexType', {name => $self->{parameters}{typename}.'Type'},
+            'complexType', {name => $type->{Name}.'Type'},
             ['complexContent', 
-             ['extension', { base => 'gml:AbstractFeatureType' }, 
+             ['extension', { base => 'gml:AbstractFeatureType' },
               ['sequence', \@elements
               ]]]);
         $writer->element(
-            'element', { name => $type->{Name}, 
-                         type => 'ogr:'.$self->{parameters}{typename}.'Type',
+            'element', { name => $type->{Name},
+                         type => 'ogr:'.$type->{Name}.'Type',
                          substitutionGroup => 'gml:_Feature' } );
     }
     
@@ -545,14 +543,25 @@ with layer name falling back to FeatureType).
 
 sub GetFeature {
     my ($self) = @_;
+    
+    my $query = $self->{request}{queries}[0]; # actually we should loop through all queries?
+    my ($typename) = split(/\s*,\s*/, $query->{typename});
+    
+    unless ($typename) {
+        $self->error({ exceptionCode => 'MissingParameterValue',
+                       locator => 'typeName' });
+        return;
+    }
+    
+    my $type = $self->feature_type($typename);
 
-    my $query = $self->{request}{queries}[0]; # actually we should loop through all queries
+    unless ($type) {
+        $self->error({ exceptionCode => 'InvalidParameterValue',
+                       locator => 'typeName',
+                       ExceptionText => "Type '$typename' is not available" });
+        return;
+    }
 
-    my $name = $query->{typename};
-    $name =~ s/\w+://; # remove namespace
-
-    my $type = $self->feature_type($name);
-    #say STDERR Dumper($type);
     my $layer;
 
     if ($type && $type->{Layer}) {
@@ -581,29 +590,30 @@ sub GetFeature {
         
         my @cols;
          # reverse the field names
-        for my $field_name (keys %{$type->{Schema}}) {
-            next if $field_name eq 'ID';
-            next if $pseudo_credentials->{$field_name};
-            my $n = $field_name;
-            $n =~ s/ /_/g;
-            $n =~ s/ä/a/g;
-            $n =~ s/ö/o/g;
+        for my $col (keys %{$type->{Schema}}) {
+            next if $pseudo_credentials->{$col};
 
-            # need to use the specified GeometryColumn and only it
-            next if $type->{Schema}{$field_name} eq 'geometry' and not ($field_name eq $type->{GeometryColumn});
+            my $is_geometry = $col eq $type->{GeometryColumn};
+            my $name = $type->{Schema}{$col}{out_name};
 
-            if ($epsg and $field_name eq $type->{GeometryColumn}) {
-                push @cols, "st_transform(\"$field_name\",$epsg) as \"$n\"";
+            next if $query->{properties} && not $query->{properties}{$name};
+
+            # only one geometry property in the output
+            next if $type->{Schema}{$col}{out_type} eq 'gml:GeometryPropertyType' && not $is_geometry;
+
+            if ($epsg and $is_geometry) {
+                push @cols, "st_transform(\"$col\",$epsg) as \"$name\"";
             } else {
-                $filter =~ s/$n/$field_name/g if $filter;
-                $n = 'gml_id' if defined $type->{"gml:id"} && $field_name eq $type->{"gml:id"};
-                push @cols, "\"$field_name\" as \"$n\"";
+                $filter =~ s/$name/$col/g if $filter;
+                $name = 'gml_id' if defined $type->{"gml:id"} && $col eq $type->{"gml:id"};
+                push @cols, "\"$col\" as \"$name\"";
             }
         }
 
-        my $sql = "select ".join(',',@cols)." from \"$type->{Table}\" where ST_IsValid($type->{GeometryColumn})";
-
         my $geom = $type->{GeometryColumn};
+        
+        my $sql = "select ".join(',',@cols)." from \"$type->{Table}\" where ST_IsValid(\"$geom\")";
+
         $geom = "st_transform(\"$geom\",$epsg)" if defined $epsg;
         $filter =~ s/GeometryColumn/$geom/g if $filter;
         $sql .= " AND $filter" if $filter;
@@ -616,7 +626,7 @@ sub GetFeature {
     unless ($layer) {
         $self->error({ exceptionCode => 'InvalidParameterValue',
                        locator => 'typeName',
-                       ExceptionText => "Type '$name' is not available (or there was an internal or configuration error)" });
+                       ExceptionText => "Type '$typename' is not available (or there was an internal or configuration error)" });
         return;
     }
 
@@ -769,7 +779,7 @@ sub Transaction {
         $writer->element('wfs:'.$op.'Results', $results{$op}) if @{$results{$op}};
     }
     $writer->close_element;
-    $writer->stream($self->{responder}, 1);
+    $writer->stream($self->{responder});
 }
 
 =pod
@@ -892,7 +902,7 @@ sub feature_type {
                                     $ret->{GeometryColumn} = $name;
                                 }
                             }
-                            $ret->{Schema}{$name} = $type;
+                            $ret->{Schema}{$name}{in_type} = $type;
                         }
                     }
                 }
@@ -909,6 +919,29 @@ sub feature_type {
         if ($@) {
             say STDERR $@;
             next;
+        }
+        if ($ret) {
+            for my $in_name (keys %{$ret->{Schema}}) {
+                my $in_type = $ret->{Schema}{$in_name}{in_type};
+                my $out_type = $type_map{$in_type} // 'xs:string';
+                my $out_name = $in_name;
+
+                # field name adjustments as GDAL does them
+                $out_name =~ s/ /_/g; 
+                
+                # extra name adjustments, needed by QGIS
+                $out_name =~ s/[åö]/o/g;
+                $out_name =~ s/ä/a/g;
+                $out_name =~ s/[ÅÖ]/O/g;
+                $out_name =~ s/Ä/A/g;
+
+                # GDAL will use geometryProperty for geometry elements when producing GML:
+                $out_name = 'geometryProperty' if $out_type eq 'gml:GeometryPropertyType';
+
+                $ret->{Schema}{$in_name}{out_name} = $out_name;
+                $ret->{Schema}{$in_name}{out_type} = $out_type;
+                
+            }
         }
         return $ret if $ret;
     }
@@ -941,8 +974,9 @@ sub feature_types_in_data_source {
         my @geometry_columns;
         while (my $data = $sth->fetchrow_hashref) {
             my $n = $data->{COLUMN_NAME};
-            $n =~ s/"//g;
-            $schema{$n} = $data->{TYPE_NAME};
+            $n =~ s/^"//;
+            $n =~ s/"$//;
+            $schema{$n}{in_type} = $data->{TYPE_NAME};
             push @geometry_columns, $n if $data->{TYPE_NAME} eq 'geometry';            
         }
         for my $geom (@geometry_columns) {
@@ -973,6 +1007,12 @@ sub feature_types_in_data_source {
 
             my $prefix = $type->{prefix};
             my $name = "$prefix.$table.$geom";
+            # wash the name
+            $name =~ s/ /_/g;
+            $name =~ s/[åö]/o/g;
+            $name =~ s/ä/a/g;
+            $name =~ s/[ÅÖ]/O/g;
+            $name =~ s/Ä/A/g;
             next if $type->{allow} and !$type->{allow}{$name};
             next if $type->{deny} and $type->{deny}{$name};
 
@@ -1012,22 +1052,43 @@ sub ogc_request {
     my $ns = '';
     my $name = $node->nodeName;
     ($ns, $name) = split /:/, $name if $name =~ /:/;
-    if ($name eq 'GetFeature') {
+    if ($name eq 'GetCapabilities') {
+        return { service => $node->getAttribute('service'), 
+                 request => $name,
+                 version => $node->getAttribute('version') };
+
+    } elsif ($name eq 'DescribeFeatureType') {
+        my $request = { service => $node->getAttribute('service'), 
+                        request => $name,
+                        version => $node->getAttribute('version') };
+        $request->{queries} = [];
+        for ($node = $node->firstChild; $node; $node = $node->nextSibling) {
+            my ($ns, $name) = parse_tag($node);
+            if ($name eq 'TypeName') {
+                push @{$request->{queries}}, { typename => $node->textContent };
+            }
+        }
+        return $request;
+
+    } elsif ($name eq 'GetFeature') {
         my $request = { request => 'GetFeature' };
         for my $a (qw/service version resultType outputFormat count maxFeatures/) {
             my %map = (maxFeatures => 'count');
             my $key = $map{$a} // $a;
-            $request->{lc($key)} = $node->getAttribute($a);
+            my $b = $node->getAttribute($a);
+            $request->{lc($key)} = $b if $b;
         }
         $request->{queries} = [];
         for ($node = $node->firstChild; $node; $node = $node->nextSibling) {
             push @{$request->{queries}}, ogc_request($node);
         }
         return $request;
+
     } elsif ($name eq 'Transaction') {
         my $request = { request => 'Transaction' };
         for my $a (qw/service version/) {
-            $request->{$a} = $node->getAttribute($a);
+            my $b = $node->getAttribute($a);
+            $request->{$a} = $b if $b;
         }
         for ($node = $node->firstChild; $node; $node = $node->nextSibling) {
             my $name = $node->nodeName;
@@ -1042,70 +1103,83 @@ sub ogc_request {
             }
         }
         return $request;
+
     } elsif ($name eq 'Query') {
         my $query = {};
-        my @filters = $node->getChildrenByTagName('ogc:Filter');
-        $query->{filter} = $filters[0] if @filters; # there is only one filter
-        @filters = $node->getChildrenByTagName('fes:Filter');
-        $query->{filter} = $filters[0] if @filters; # there is only one filter
-        for my $a (qw/typeName srsName/) {
-            $query->{$a} = $node->getAttribute($a);
+        for my $a (qw/typeName typeNames srsName/) {
+            my %map = (typeNames => 'typeName');
+            my $key = $map{$a} // $a;
+            my $b = $node->getAttribute($a);
+            $query->{lc($key)} = $b if $b;
         }
-        if (exists $query->{srsName}) {
+        if (defined $query->{srsName}) {
             ($query->{EPSG}) = $query->{srsName} =~ /EPSG:(\d+)/;
         }
+        for my $property ($node->getChildrenByTagNameNS('*', 'PropertyName')) {
+            $query->{properties} = {} unless $query->{properties};
+            $query->{properties}{strip($property->textContent)} = 1;
+        }
+        for my $filter ($node->getChildrenByTagNameNS('*', 'Filter')) {
+            $query->{filter} = $filter; # there is only one filter
+        }
         return $query;
+
     }
+    return {};
 }
 
 # convert OGC Transaction XML to SQL
 sub transaction_sql {
     my ($self) = @_;
     my $get_type = sub {
-        my $type_name = shift;
-        say STDERR "Type: $type_name";
-        $type_name =~ s/^\w+://; # remove possible namespace
-        my $type = $self->feature_type($type_name);
+        my $name = shift;
+        $name =~ s/^\w+://; # remove possible namespace
+        my $type = $self->feature_type($name);
         unless ($type) {
-            say STDERR "No such feature type: '$type_name'";
+            say STDERR "No such feature type: '$name'";
             return;
         }
         unless ($type->{Table}) {
-            say STDERR "The datasource is not PostGIS for '$type_name'.";
+            say STDERR "The datasource is not PostGIS for '$name'.";
             return;
         }
         my $dbi = DataSource2dbi($type->{DataSource});
-        return ($type_name, $type, $dbi);
+        return ($name, $type, $dbi);
     };
     my $get_filter = sub {
         my ($node, $type) = @_;
-        my @filter = $node->getChildrenByTagName('Filter');
-        @filter = $node->getChildrenByTagName('ogc:Filter') unless @filter;
-        @filter = $node->getChildrenByTagName('fes:Filter') unless @filter;
         my $where = '';
-        $where = filter2sql($filter[0], $type) if @filter;
+        for my $filter ($node->getChildrenByTagNameNS('*', 'Filter')) {
+            $where = filter2sql($filter, $type);
+        }
         return $where;
     };
     my %dbisql;
     for my $node (@{$self->{request}{Insert}}) {
         my ($type_name, $type, $dbi) = $get_type->($node->nodeName);
-        say STDERR "Insert: $type_name, $type, $dbi";
         next unless $type_name;
         my @cols;
         my @vals;
         for (my $field = $node->firstChild; $field; $field = $field->nextSibling) {
-            my $fieldName = $field->nodeName;
-            $fieldName =~ s/^\w+://; # remove namespace
+            my ($ns, $name) = parse_tag($field);
+            my $col;
             my $val;
-            if ($fieldName eq 'geometryProperty' or $fieldName eq 'null') {
+            if ($name eq 'geometryProperty' or $name eq 'null') {
+                $col = $type->{GeometryColumn};
                 $val = node2sql($field->firstChild);
-                $fieldName = $type->{GeometryColumn};
-            }  else {            
-                next unless exists $type->{Schema}{$fieldName};
+            }  else {
+                for my $c (keys %{$type->{Schema}}) {
+                    $col = $c if $name eq $type->{Schema}{$c}{out_name};
+                }
+                next unless $col;
                 $val = $field->firstChild->data;
                 $val = "'".$val."'";
             }
-            push @cols, '"'.$fieldName.'"';
+            unless ($col) {
+                say STDERR "Can't find column name for property '$name'.";
+                next;
+            }
+            push @cols, '"'.$col.'"';
             push @vals, $val;
         }
         push @{$dbisql{$dbi}{Insert}{SQL}}, "INSERT INTO $type->{Table} (".join(',',@cols).") VALUES (".join(',',@vals).")";
@@ -1115,24 +1189,36 @@ sub transaction_sql {
         my ($type_name, $type, $dbi) = $get_type->($node->getAttribute('typeName'));
         next unless $type_name;
         my $set;
-        for my $property ($node->getChildrenByTagName('wfs:Property')) {
+        for my $property ($node->getChildrenByTagNameNS('*', 'Property')) {
             # 1.1 Name and Value
             # 2.0 ValueReference and Value
-            my @name = $property->getChildrenByTagName('wfs:Name');
-            @name = $property->getChildrenByTagName('wfs:ValueReference') unless @name;
+            my $col;
+            my @name = $property->getChildrenByTagNameNS('*', 'Name');
+            @name = $property->getChildrenByTagNameNS('*', 'ValueReference') unless @name;
+            unless (@name) {
+                say STDERR "Can't find Name nor ValueReference.";
+                next;
+            }
             my $name = $name[0]->textContent();
             $name =~ s/^\w+://; # remove namespace
             $name =~ s/^\w+\///; # remove type name
             next if $name eq $type->{"gml:id"};
-            my @value = $property->getChildrenByTagName('wfs:Value');
-            my $value;
+            my @val = $property->getChildrenByTagNameNS('*', 'Value');
+            my $val;
             if ($name eq 'geometryProperty' or $name eq 'null') {
-                $name = $type->{GeometryColumn};
-                $value = @value ? node2sql($value[0]->firstChild) : 'NULL';
+                $col = $type->{GeometryColumn};
+                $val = @val ? node2sql($val[0]->firstChild) : 'NULL';
             } else {
-                $value = @value ? "'".$value[0]->textContent()."'" : 'NULL';
+                for my $c (keys %{$type->{Schema}}) {
+                    $col = $c if $name eq $type->{Schema}{$c}{out_name};
+                }                
+                $val = @val ? "'".$val[0]->textContent()."'" : 'NULL';
             }
-            $set .= "\"$name\" = $value, ";
+            unless ($col) {
+                say STDERR "Can't find column name for property '$name'.";
+                next;
+            }
+            $set .= "\"$col\" = $val, ";
         }
         $set =~ s/, $//;
         my $where = $get_filter->($node, $type);
