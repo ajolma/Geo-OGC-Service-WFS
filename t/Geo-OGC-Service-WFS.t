@@ -118,4 +118,3 @@ test_psgi $app, sub {
         is 1, 1;
     }
 };
-
