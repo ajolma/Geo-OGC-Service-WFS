@@ -11,7 +11,7 @@ WriteMakefile(
                            "JSON" => 0,
                            "DBI" => 0,
                            "XML::LibXML::PrettyPrint" => 0, # for debugging
-                           "Geo::GDAL" => 2.1, # we need a working vsistdout implementation
+                           "Geo::GDAL" => 2.01, # we need a working vsistdout implementation
                            "Geo::OGC::Service" => 0.03,
     },
     TEST_REQUIRES     => { "Plack::Test" => 0,

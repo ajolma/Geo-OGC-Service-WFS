@@ -15,17 +15,17 @@ This module aims to provide the operations defined by the Open
 Geospatial Consortium's Web Feature Service standard. These are (in
 the version 2.0 of the standard)
 
-GetCapabilities (discovery operation) (*)
-DescribeFeatureType (discovery operation) (*)
-GetPropertyValue (query operation)
-GetFeature (query operation) (*)
-GetFeatureWithLock (query & locking operation)
-LockFeature (locking operation)
-Transaction (transaction operation) (*)
-CreateStoredQuery (stored query operation)
-DropStoredQuery (stored query operation)
-ListStoredQueries (stored query operation)
-DescribeStoredQueries (stored query operation)
+ GetCapabilities (discovery operation) (*)
+ DescribeFeatureType (discovery operation) (*)
+ GetPropertyValue (query operation)
+ GetFeature (query operation) (*)
+ GetFeatureWithLock (query & locking operation)
+ LockFeature (locking operation)
+ Transaction (transaction operation) (*)
+ CreateStoredQuery (stored query operation)
+ DropStoredQuery (stored query operation)
+ ListStoredQueries (stored query operation)
+ DescribeStoredQueries (stored query operation)
 
 (*) are at least somehow implemented.
 
@@ -163,14 +163,14 @@ Service the GetCapabilities request. The configuration JSON is used to
 control the contents of the reply. The config contains root keys, which
 are either simple or complex. The simple root keys are
 
-Key                 Default             Comment
----                 -------             -------
-version             2.0.0
-Title               WFS Server
-resource                                required
-ServiceTypeVersion
-AcceptVersions      2.0.0,1.1.0,1.0.0
-Transaction                             optional
+ Key                 Default             Comment
+ ---                 -------             -------
+ version             2.0.0
+ Title               WFS Server
+ resource                                required
+ ServiceTypeVersion
+ AcceptVersions      2.0.0,1.1.0,1.0.0
+ Transaction                             optional
 
 FeatureTypeList is a root key, which is a list of FeatureType
 hashes. A FeatureType defines one layer (key Layer exists) or a group
