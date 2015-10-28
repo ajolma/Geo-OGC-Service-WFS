@@ -5,7 +5,8 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'Geo::OGC::Service::WFS',
     VERSION_FROM      => 'lib/Geo/OGC/Service/WFS.pm', # finds $VERSION, requires EU::MM from perl >= 5.5
-    PREREQ_PM         => { "File::Basename" => 0,
+    PREREQ_PM         => { "Modern::Perl" => 0,
+                           "File::Basename" => 0,
                            "Capture::Tiny" => 0,
                            "Clone" => 0,
                            "JSON" => 0,
