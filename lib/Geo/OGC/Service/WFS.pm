@@ -572,7 +572,7 @@ sub GetFeature {
     elsif ($type && $type->{Table}) {
 
         my $filter = filter2sql($query->{filter}, $type) // '';
-        my $epsg = $query->{EPSG} // '';
+        my $epsg = $query->{EPSG};
 
         # pseudo_credentials: these fields are required to be in the filter and they are not included as attributes
         my ($pseudo_credentials, @pseudo_credentials) = pseudo_credentials($type);
@@ -581,11 +581,12 @@ sub GetFeature {
             my $pat1 = "\\(\\(\"$pseudo_credentials[0]\" = '.+?'\\) AND \\(\"$pseudo_credentials[1]\" = '.+?'\\)\\)";
             my $pat2 = "\\(\\(\"$pseudo_credentials[1]\" = '.+?'\\) AND \\(\"$pseudo_credentials[0]\" = '.+?'\\)\\)";
             my $n = join(' and ', @pseudo_credentials);
-            $self->error({ exceptionCode => 'InvalidParameterValue',
-                           locator => 'filter',
-                           ExceptionText => "Not authorized. Please provide '$n' in filter." })
-                unless $filter and ($filter =~ /$pat1/ or $filter =~ /$pat2/);
-            return;
+            unless ($filter and ($filter =~ /$pat1/ or $filter =~ /$pat2/)) {
+                $self->error({ exceptionCode => 'InvalidParameterValue',
+                               locator => 'filter',
+                               ExceptionText => "Not authorized. Please provide '$n' in filter." });
+                return;
+            }
         }
         
         my @cols;
@@ -601,7 +602,7 @@ sub GetFeature {
             # only one geometry property in the output
             next if $type->{Schema}{$col}{out_type} eq 'gml:GeometryPropertyType' && not $is_geometry;
 
-            if ($epsg and $is_geometry) {
+            if (defined $epsg and $is_geometry) {
                 push @cols, "st_transform(\"$col\",$epsg) as \"$name\"";
             } else {
                 $filter =~ s/$name/$col/g if $filter;
@@ -620,7 +621,10 @@ sub GetFeature {
         $sql .= " AND (\"$geom\" && ST_MakeEnvelope(".join(",", @{$query->{BBOX}})."))" if $query->{BBOX};
 
         print STDERR "$sql\n" if $self->{debug} > 2;
-        $layer = $self->{DataSource}->ExecuteSQL($sql);
+        eval {
+            $layer = $self->{DataSource}->ExecuteSQL($sql);
+        };
+        print STDERR $@ if $@;
     }
 
     unless ($layer) {
@@ -636,7 +640,8 @@ sub GetFeature {
     # use "TARGET_NAMESPACE": "http://ogr.maptools.org/", "PREFIX": "ogr", in config or type section
     my $ns = $self->{config}{TARGET_NAMESPACE} // $type->{TARGET_NAMESPACE} // 'http://www.opengis.net/wfs';
     my $prefix = $self->{config}{PREFIX} // $type->{PREFIX} // 'wfs';
-    my $format = $self->{config}{FORMAT} // 'GML3.2';
+    my $format = $self->{request}{outputformat} // $self->{config}{FORMAT} // 'GML3.2';
+    print STDERR "Output format: $format\n" if $self->{debug} > 2;
 
     my $vsi = '/vsistdout/';
     my $gml;
@@ -881,12 +886,13 @@ sub open_datasource {
 
 sub feature_type {
     my ($self, $type_name) = @_;
+    my ($ns, $name) = parse_name($type_name);
     for my $type (@{$self->{config}{FeatureTypeList}}) {
         my $ret;
         eval {
             if ($self->open_datasource($type)) {
                 if (exists $type->{Layer}) {
-                    if ($type->{Name} eq $type_name) {
+                    if ($type->{Name} eq $name) {
                         $ret = clone($type);
                         my $schema = $self->get_layer($type)->GetSchema;
                         my %geometry_types = map {$_ => 1} Geo::OGR::GeometryTypes();
@@ -909,7 +915,7 @@ sub feature_type {
                 else {
                     # open policy: announce all in a data source except those denied
                     for my $t ($self->feature_types_in_data_source($type)) {
-                        if ($t->{Name} eq $type_name) {
+                        if ($t->{Name} eq $name) {
                             $ret = $t;
                         }
                     }
@@ -980,6 +986,7 @@ sub feature_types_in_data_source {
             push @geometry_columns, $n if $data->{TYPE_NAME} eq 'geometry';            
         }
         for my $geom (@geometry_columns) {
+            print STDERR "Testing \"$table.$geom\": " if $self->{debug} > 2;
             my $sql = "select auth_name,auth_srid ".
                 "from \"$table\" ".
                 "join spatial_ref_sys on spatial_ref_sys.srid=st_srid(\"$geom\") ".
@@ -1014,8 +1021,14 @@ sub feature_types_in_data_source {
             $shortname =~ s/[ÅÖ]/O/g;
             $shortname =~ s/Ä/A/g;
             my $name = $prefix.'.'.$shortname;
-            next if $type->{allow} and (!$type->{allow}{$shortname} or !$type->{allow}{$name});
-            next if $type->{deny} and ($type->{deny}{$shortname} or $type->{deny}{$name});
+            if ($type->{allow} and !($type->{allow}{$shortname} or $type->{allow}{$name})) {
+                print STDERR "not allowed.\n" if $self->{debug} > 2;
+                next;
+            }
+            if ($type->{deny} and ($type->{deny}{$shortname} or $type->{deny}{$name})) {
+                print STDERR "denied.\n" if $self->{debug} > 2;
+                next;
+            }
 
             my $feature_type = {
                 Title => "$table($geom)",
@@ -1036,6 +1049,17 @@ sub feature_types_in_data_source {
             for my $key (keys %$type) {
                 $feature_type->{$key} //= $type->{$key} unless ref $key;
             }
+            my ($h, @c) = pseudo_credentials($feature_type);
+            my $ok = 1;
+            for my $c (@c) {
+                unless ($feature_type->{Schema}{$c}) {
+                    print STDERR "pseudo credential column '$c' not in schema.\n" if $self->{debug} > 2;
+                    $ok = 0;
+                    next;
+                }
+            }
+            next unless $ok;
+            print STDERR "added.\n" if $self->{debug} > 2;
             push @feature_types, $feature_type;
         }
     }
@@ -1051,10 +1075,8 @@ sub get_layer {
 # return WFS request in a hash
 # this function is written according to WFS 1.1.0 / 2.0.0
 sub ogc_request {
-    my($node) = @_;
-    my $ns = '';
-    my $name = $node->nodeName;
-    ($ns, $name) = split /:/, $name if $name =~ /:/;
+    my ($node) = @_;
+    my ($ns, $name) = parse_tag($node);
     if ($name eq 'GetCapabilities') {
         return { service => $node->getAttribute('service'), 
                  request => $name,
@@ -1115,8 +1137,8 @@ sub ogc_request {
             my $b = $node->getAttribute($a);
             $query->{lc($key)} = $b if $b;
         }
-        if (defined $query->{srsName}) {
-            ($query->{EPSG}) = $query->{srsName} =~ /EPSG:(\d+)/;
+        if (defined $query->{srsname}) {
+            ($query->{EPSG}) = $query->{srsname} =~ /EPSG:(\d+)/;
         }
         for my $property ($node->getChildrenByTagNameNS('*', 'PropertyName')) {
             $query->{properties} = {} unless $query->{properties};
@@ -1332,10 +1354,16 @@ sub filter2sql {
 
     } elsif ($name eq 'BBOX') {
         $node = $node->firstChild;
-        my $property = filter2sql($node, $type);
-        $node = $node->nextSibling;
-        my $envelope = filter2sql($node, $type);
-        return "($property && $envelope)";
+        my ($ns, $n) = parse_tag($node);
+        if ($n eq 'Envelope') {
+            my $envelope = filter2sql($node, $type);
+            return "(GeometryColumn && $envelope)";
+        } else {
+            my $property = filter2sql($node, $type);
+            $node = $node->nextSibling;
+            my $envelope = filter2sql($node, $type);
+            return "($property && $envelope)";
+        }
 
     } elsif ($spatial2op{$name}) {
         $node = $node->firstChild;
@@ -1460,8 +1488,12 @@ sub error {
 
 sub parse_tag {
     my $node = shift;
+    return parse_name($node->nodeName);
+}
+
+sub parse_name {
+    my $name = shift;
     my $ns = '';
-    my $name = $node->nodeName;
     ($ns, $name) = split /:/, $name if $name =~ /:/;
     return ($ns, $name);
 }

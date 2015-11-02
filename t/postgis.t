@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 7;
+use Test::More tests => 8;
 use Plack::Test;
 use HTTP::Request::Common;
 use Geo::OGC::Service;
@@ -20,13 +20,13 @@ my $error;
 my $test_db = 'wfstest';
 my $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
 if ($dbh) {
-    #$dbh->do("DROP DATABASE IF EXISTS $test_db"); # a bit dangerous, remove from releases
+    $dbh->do("DROP DATABASE IF EXISTS $test_db"); # a bit dangerous, remove from releases
     if ($dbh->do("create database $test_db encoding 'UTF-8'")) {
         $connect = "dbi:Pg:dbname=$test_db";
         $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
         if ($dbh->do("CREATE EXTENSION postgis")) {
-            $dbh->do("create table test (id serial primary key, i int, d double precision, s text, geom geometry)");
-            $dbh->do("insert into test (i, d, s, geom) values (1, 2.1, 'hello', st_geometryfromtext('POINT (1 2)'))");
+            $dbh->do("create table test (id serial primary key, i int, d double precision, s text, p text, geom geometry)");
+            $dbh->do("insert into test (i, d, s, p, geom) values (1, 2.1, 'hello', 'pass', st_geometryfromtext('POINT (1 2)'))");
         } else {
             $error = $dbh->errstr;
         }
@@ -39,7 +39,7 @@ if ($dbh) {
 my $pp = XML::LibXML::PrettyPrint->new(indent_string => "  ");
 
 SKIP: {
-    skip "Skip PostGIS tests. Reason: can't connect to database '$connect': ".$error, 6 if $error;
+    skip "Skip PostGIS tests. Reason: can't connect to database '$connect': ".$error, 7 if $error;
 
     my $config = {
         "resource" => "/",
@@ -53,7 +53,11 @@ SKIP: {
             {
                 "prefix" => "local",
                 "gml:id" => "id",
-                "DataSource" => "Pg:dbname=$test_db host=localhost user=$user password=$pass"
+                "DataSource" => "Pg:dbname=$test_db host=localhost user=$user password=$pass",
+                "test_auth.geom" => {
+                    "Transaction" => "Query,Insert,Update,Delete",
+                    "pseudo_credentials" => "usern,pass"
+                }
             }
             ]
     };
@@ -209,8 +213,68 @@ SKIP: {
         }
     };
 
-    $connect = "dbi:Pg:dbname=postgres";
-    $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
-    $dbh->do("drop database wfstest")
+    # test pseudo credentials
+    
+    $dbh->do("create table test_auth (id serial primary key, usern text, pass text, geom geometry)") or die $dbh->errstr;
+    $dbh->do("insert into test_auth (usern, pass, geom) values ('me', 'pass', st_geometryfromtext('POINT (1 2)'))") or die $dbh->errstr;
+    $dbh->do("insert into test_auth (usern, pass, geom) values ('me', 'pass', st_geometryfromtext('POINT (3 4)'))") or die $dbh->errstr;
+    $dbh->do("insert into test_auth (usern, pass, geom) values ('her', 'pass', st_geometryfromtext('POINT (3 4)'))") or die $dbh->errstr;
+
+    test_psgi $app, sub {
+        my $cb = shift;
+        my $req = HTTP::Request->new(POST => "/");
+        $req->content_type('text/xml');
+        my $post = <<'end'; # almost actual XML sent by OpenLayers
+<?xml version="1.0"?>
+<wfs:GetFeature xmlns:wfs="http://www.opengis.net/wfs" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" service="WFS" version="1.1.0" outputFormat="GML2" xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
+  <wfs:Query typeName="feature:local.test_auth.geom">
+    <ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
+      <ogc:And>
+        <ogc:And>
+          <ogc:PropertyIsEqualTo matchCase="true">
+            <ogc:PropertyName>usern</ogc:PropertyName>
+            <ogc:Literal>me</ogc:Literal>
+          </ogc:PropertyIsEqualTo>
+          <ogc:PropertyIsEqualTo matchCase="true">
+            <ogc:PropertyName>pass</ogc:PropertyName>
+            <ogc:Literal>pass</ogc:Literal>
+          </ogc:PropertyIsEqualTo>
+        </ogc:And>
+        <ogc:BBOX>
+          <gml:Envelope xmlns:gml="http://www.opengis.net/gml">
+            <gml:lowerCorner>
+              0 0
+            </gml:lowerCorner>
+            <gml:upperCorner>
+              5 5
+            </gml:upperCorner>
+          </gml:Envelope>
+        </ogc:BBOX>
+      </ogc:And>
+    </ogc:Filter>
+  </wfs:Query>
+</wfs:GetFeature>
+end
+
+        $req->content($post);
+        my $res = $cb->($req);
+        my $parser = XML::LibXML->new(no_blanks => 1);
+        my $dom;
+        eval {
+            $dom = $parser->load_xml(string => $res->content);
+        };
+        if ($@) {
+            is $@, 0, 'GetFeature with auth by properties';
+        } else {
+            #$pp->pretty_print($dom);
+            #say STDERR $dom->toString;
+            my @n = $dom->documentElement()->getChildrenByTagNameNS('*', 'featureMember');
+            is @n, 2, 'GetFeature with auth by properties';
+        }
+    };
+
+    #$connect = "dbi:Pg:dbname=postgres";
+    #$dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
+    #$dbh->do("drop database wfstest")
     
 }

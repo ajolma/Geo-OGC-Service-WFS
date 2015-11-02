@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Modern::Perl;
 
-use Test::More tests => 5;
+use Test::More tests => 6;
 use XML::LibXML;
 use XML::SemanticDiff;
 BEGIN { use_ok('Geo::OGC::Service::WFS') };
@@ -82,3 +82,23 @@ $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
 $sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
 is $sql, "ST_Within(\"wkbGeom\", ST_GeometryFromText('POLYGON ((-30.15 115.03, -30.17 115.02, -30.16 115.02, -30.15 115.02, -30.15 115.02, -30.15 115.02, -30.14 115.03, -30.15 115.03))'))";
+
+$xml = <<end;
+<ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
+  <ogc:BBOX>
+    <gml:Envelope xmlns:gml="http://www.opengis.net/gml" srsName="EPSG:3857">
+      <gml:lowerCorner>
+        2343329.7146568 8601226.8962494
+      </gml:lowerCorner>
+      <gml:upperCorner>
+        2534422.2853432 8729641.1037506
+      </gml:upperCorner>
+    </gml:Envelope>
+  </ogc:BBOX>
+</ogc:Filter>
+end
+
+$parser = XML::LibXML->new(no_blanks => 1);
+$dom = $parser->load_xml(string => $xml);
+$sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
+is $sql, "(GeometryColumn && ST_MakeEnvelope(2343329.7146568,8601226.8962494,2534422.2853432,8729641.1037506,3857))";
