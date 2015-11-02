@@ -102,6 +102,15 @@ our %type_map = (
     boolean => "xs:boolean",
     );
 
+# Value in request => GDAL GML creation option
+our %OutputFormats = (
+    'XMLSCHEMA' => 'GML2',
+    'text/xml; subtype=gml/2.1.2' => 'GML2',
+    'text/xml; subtype=gml/3.1.1' => 'GML3',
+    'text/xml; subtype=gml/3.2' => 'GML3.2',
+    'GML3Deegree' => 'GML3Deegree',
+    );
+
 =pod
 
 =head3 process_request
@@ -267,9 +276,9 @@ sub OperationsMetadata  {
                       {AcceptVersions => \@versions}, 
                       {AcceptFormats => ['text/xml']}]);
     $self->Operation($writer, 'DescribeFeatureType', 
-                     [{outputFormat => ['XMLSCHEMA','text/xml; subtype=gml/2.1.2','text/xml; subtype=gml/3.1.1']}]);
+                     [{outputFormat => [sort keys %OutputFormats]}]);
     $self->Operation($writer, 'GetFeature',
-                     [{resultType => ['results']}, {outputFormat => ['text/xml; subtype=gml/3.1.1']}]);
+                     [{resultType => ['results']}, {outputFormat => [sort keys %OutputFormats]}]);
     $self->Operation($writer, 'Transaction',
                      [{inputFormat => ['text/xml; subtype=gml/3.1.1']}, 
                       {idgen => ['GenerateNew','UseExisting','ReplaceDuplicate']},
@@ -336,13 +345,17 @@ sub FeatureTypeList  {
     my $list_layer = sub {
         my ($type) = @_;
         $self->get_layer($type); # test only, now opens.. could be just name
+        my @formats;
+        for my $format (sort keys %OutputFormats) {
+            push @formats, ['wfs:Format', $format];
+        }
         my @FeatureType = (
             ['wfs:Name', $type->{Name}],
             ['wfs:Title', $type->{Title}],
             ['wfs:Abstract', $type->{Abstract}],
             ['wfs:DefaultSRS', $type->{DefaultSRS}],
             ['wfs:OtherSRS', 'EPSG:3857'],
-            ['wfs:OutputFormats', ['wfs:Format', 'text/xml; subtype=gml/3.1.1']]);
+            ['wfs:OutputFormats', \@formats]);
         push @FeatureType, ['ows:WGS84BoundingBox', {dimensions=>2}, 
                             [['ows:LowerCorner',$type->{LowerCorner}],
                              ['ows:UpperCorner',$type->{UpperCorner}]]]
@@ -641,7 +654,8 @@ sub GetFeature {
     my $ns = $self->{config}{TARGET_NAMESPACE} // $type->{TARGET_NAMESPACE} // 'http://www.opengis.net/wfs';
     my $prefix = $self->{config}{PREFIX} // $type->{PREFIX} // 'wfs';
     my $format = $self->{request}{outputformat} // $self->{config}{FORMAT} // 'GML3.2';
-    print STDERR "Output format: $format\n" if $self->{debug} > 2;
+    $format = $OutputFormats{$format} if $OutputFormats{$format};
+    print STDERR "Output format (for GDAL creation): $format\n" if $self->{debug} > 2;
 
     my $vsi = '/vsistdout/';
     my $gml;
@@ -845,6 +859,7 @@ sub parse_request {
         $self->{request} = {
             request => $self->{parameters}{request},
             version => $self->{parameters}{version},
+            outputformat => $self->{parameters}{outputformat},
             queries => [
                 {
                     typename => fallback($self->{parameters}{typename}, $self->{parameters}{typenames}),
@@ -855,6 +870,7 @@ sub parse_request {
                 }
                 ]
         };
+        $self->{request}{outputformat} = 'GML2' if $self->{request}{version} && $self->{request}{version} eq '1.0.0';
     }
 
     my %defaults = (
@@ -1138,7 +1154,7 @@ sub ogc_request {
             $query->{lc($key)} = $b if $b;
         }
         if (defined $query->{srsname}) {
-            ($query->{EPSG}) = $query->{srsname} =~ /EPSG:(\d+)/;
+            $query->{EPSG} = get_integer($query->{srsname});
         }
         for my $property ($node->getChildrenByTagNameNS('*', 'PropertyName')) {
             $query->{properties} = {} unless $query->{properties};
@@ -1402,10 +1418,8 @@ sub filter2sql {
 
 sub node2sql {
     my ($node) = @_;
-    my $srs = $node->getAttribute('srsName');
-    ($srs) = $srs =~ /EPSG:(\d+)/ if $srs;
-    $srs = ",$srs" if $srs;
-    $srs //= '';
+    my $srs = get_integer($node->getAttribute('srsName')) // '';
+    $srs = ",$srs" if $srs ne '';
     my ($ns, $name) = parse_tag($node);
     my $wkt;
 
