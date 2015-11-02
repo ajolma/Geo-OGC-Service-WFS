@@ -187,9 +187,9 @@ or view, and the name of the geometry column, e.g.,
 prefix.table.geom. The listed layers can be restricted with keys
 TABLE_TYPE, TABLE_PREFIX, deny, and allow. TABLE_TYPE, deny, and allow
 are, if exist, hashes. The keys of the first are table types as DBI
-reports them, and the keys of the deny and allow are table names.
-TABLE_PREFIX is a string that sets a requirement for the table names
-for to be listed.
+reports them, and the keys of the deny and allow are layer names (the
+prefix can be left out). TABLE_PREFIX is a string that sets a
+requirement for the table/view names for to be listed.
 
 =cut
 
@@ -1006,15 +1006,16 @@ sub feature_types_in_data_source {
             }
 
             my $prefix = $type->{prefix};
-            my $name = "$prefix.$table.$geom";
+            my $shortname = $table.'.'.$geom;
             # wash the name
-            $name =~ s/ /_/g;
-            $name =~ s/[åö]/o/g;
-            $name =~ s/ä/a/g;
-            $name =~ s/[ÅÖ]/O/g;
-            $name =~ s/Ä/A/g;
-            next if $type->{allow} and !$type->{allow}{$name};
-            next if $type->{deny} and $type->{deny}{$name};
+            $shortname =~ s/ /_/g;
+            $shortname =~ s/[åö]/o/g;
+            $shortname =~ s/ä/a/g;
+            $shortname =~ s/[ÅÖ]/O/g;
+            $shortname =~ s/Ä/A/g;
+            my $name = $prefix.'.'.$shortname;
+            next if $type->{allow} and (!$type->{allow}{$shortname} or !$type->{allow}{$name});
+            next if $type->{deny} and ($type->{deny}{$shortname} or $type->{deny}{$name});
 
             my $feature_type = {
                 Title => "$table($geom)",
@@ -1025,9 +1026,11 @@ sub feature_types_in_data_source {
                 GeometryColumn => $geom,
                 Schema => \%schema
             };
-            if ($type->{$name}) {
-                for my $key (keys %{$type->{$name}}) {
-                    $feature_type->{$key} = $type->{$name}{$key};
+            for my $n ($shortname, $name) {
+                if ($type->{$n}) {
+                    for my $key (keys %{$type->{$n}}) {
+                        $feature_type->{$key} = $type->{$n}{$key};
+                    }
                 }
             }
             for my $key (keys %$type) {
@@ -1539,7 +1542,6 @@ sub list2element {
 sub pseudo_credentials {
     my $type = shift;
     my $c = $type->{pseudo_credentials};
-    $c = $type->{$type->{Name}}{pseudo_credentials} if !$c && $type->{Name};
     return ({}) unless $c;
     my($c1,$c2) = $c =~ /(\w+),(\w+)/;
     return ({$c1 => 1,$c2 => 1},$c1,$c2);
