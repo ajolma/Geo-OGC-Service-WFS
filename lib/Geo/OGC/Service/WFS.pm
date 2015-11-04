@@ -79,6 +79,28 @@ our %spatial2op = (
     Contains => 1
     ); # there are more in PostGIS
 
+our %temporal_operators = (
+    After => 1,
+    Before => 1,
+    Begins => 1,
+    BegunBy => 1,
+    TContains => 1,
+    During => 1,
+    TEquals => 1,
+    TOverlaps => 1,
+    Meets => 1,
+    OverlappedBy => 1,
+    MetBy => 1,
+    EndedBy => 1
+    );
+
+my %functions = (
+    abs => ['xs:int', [[int => 'xs:int']]],
+    acos => ['xs:double', [[value => 'xs:double']]],
+    Area => ['xs:double', [[geometry => 'gml:AbstractGeometryType']]],
+    within => ['xs:boolean', [[geometry => 'gml:AbstractGeometryType'], [geometry => 'gml:AbstractGeometryType']]]
+    ); # lots missing
+
 # GDAL and PostgreSQL data type to XML data type
 our %type_map = (
     geometry => "gml:GeometryPropertyType",
@@ -394,7 +416,27 @@ sub Filter_Capabilities  {
     my $ns = $self->{version} eq '2.0.0' ? 'fes' : 'ogc';
     $writer->open_element($ns.':Filter_Capabilities');
 
-    # fes:Conformance missing
+    # Conformance
+    my %Constraints = ( 
+        ImplementsQuery => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsAdHocQuery => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsFunctions => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsMinStandardFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsStandardFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'FALSE']],
+        ImplementsMinSpatialFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsSpatialFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'FALSE']],
+        ImplementsMinTemporalFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsTemporalFilter => [['ows:NoValues'], ['ows:DefaultValue' => 'TRUE']],
+        ImplementsVersionNav => [['ows:NoValues'], ['ows:DefaultValue' => 'FALSE']],
+        ImplementsSorting => [['ows:AllowedValues' => [['ows:Value' => 'ASC'], ['ows:Value' => 'DESC']]], 
+                              ['ows:DefaultValue' => 'ASC']],
+        ImplementsExtendedOperators => [['ows:NoValues'], ['ows:DefaultValue' => 'FALSE']],
+        );
+    my @c;
+    for my $key (keys %Constraints) {
+        push @c, [$ns.':Constraint', {name=>$key}, $Constraints{$key}];
+    }
+    $writer->element($ns.':Conformance', \@c);
 
     my @ids;
     if ($ns eq 'ogc') {
@@ -434,10 +476,39 @@ sub Filter_Capabilities  {
                 [[$ns.':GeometryOperands', \@operands],
                  [$ns.':SpatialOperators', \@operators]]);
 
-    # fes:Temporal_Capabilities missing
+    # Temporal_Capabilities
 
-    # fes:Functions missing
+    @operands = ();
+    for my $o (qw/TimeInstant TimePeriod/) {
+        if ($ns eq 'ogc') {
+            push @operands, [$ns.':GeometryOperand', 'gml:'.$o];
+        } else {
+            push @operands, [$ns.':GeometryOperand', { name => 'gml:'.$o }];
+        }
+    }
+    @operators = ();
+    @op = keys %temporal_operators;
+    for my $o (@op) {
+        push @operators, [$ns.':TemporalOperator', { name => $o }];
+    }
+    $writer->element($ns.':Temporal_Capabilities', 
+                     [[$ns.':TemporalOperands', \@operands],
+                      [$ns.':TemporalOperators', \@operators]]);
 
+    # Functions
+    
+    my @functions;
+    for my $f (sort keys %functions) {
+        my @args = ();
+        my $args = $functions{$f}[1];
+        for my $arg (@$args) {
+            push @args, [$ns.':Argument', { name => $arg->[0]}, [$ns.':Type' => $arg->[1]]];
+        }
+        push @functions, [$ns.':Function', { name => $f }, 
+                          [[$ns.':Returns' => $functions{$f}[0]] ,[$ns.':Arguments' => \@args]]];
+    }
+    $writer->element($ns.':Functions', \@functions);
+    
     $writer->close_element;
 }
 
@@ -1396,6 +1467,10 @@ sub filter2sql {
         $node = $node->nextSibling;
         my $dist = filter2sql($node, $type);
         return "ST_$name($geom1, $geom2, $dist)";
+
+    # temporal filter missing
+
+    # functions missing
 
     } elsif ($name eq 'Filter') {
         my %id = ( ResourceId => 1,
