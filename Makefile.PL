@@ -13,7 +13,7 @@ WriteMakefile(
                            "DBI" => 0,
                            "XML::LibXML::PrettyPrint" => 0, # for debugging
                            "Geo::GDAL" => 2.0001, # we need a working vsistdout implementation
-                           "Geo::OGC::Service" => 0.04,
+                           "Geo::OGC::Service" => 0.05,
     },
     TEST_REQUIRES     => { "Plack::Test" => 0,
                            "HTTP::Request::Common" => 0,

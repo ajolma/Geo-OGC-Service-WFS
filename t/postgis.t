@@ -62,7 +62,7 @@ SKIP: {
             ]
     };
 
-    my $app = Geo::OGC::Service->new({ config => $config, services => { WFS => 'Geo::OGC::Service::WFS' }})->psgi_app;
+    my $app = Geo::OGC::Service->new({ config => $config, services => { WFS => 'Geo::OGC::Service::WFS' }})->to_app;
 
     test_psgi $app, sub {
         my $cb = shift;

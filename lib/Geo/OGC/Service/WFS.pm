@@ -55,7 +55,7 @@ use Geo::GDAL;
 use Data::Dumper;
 use XML::LibXML::PrettyPrint;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 our %gml_geometry_type = (
     Envelope => 1,
