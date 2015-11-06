@@ -55,7 +55,7 @@ use Geo::GDAL;
 use Data::Dumper;
 use XML::LibXML::PrettyPrint;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 our %gml_geometry_type = (
     Envelope => 1,
@@ -227,7 +227,7 @@ requirement for the table/view names for to be listed.
 sub GetCapabilities {
     my ($self) = @_;
 
-    my $writer = Geo::OGC::Service::XMLWriter::Caching->new('text/xml');
+    my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
 
     my %inspireNameSpace = (
         'xmlns:inspire_dls' => "http://inspire.ec.europa.eu/schemas/inspire_dls/1.0",
@@ -546,7 +546,7 @@ sub DescribeFeatureType {
         }
     }
 
-    my $writer = Geo::OGC::Service::XMLWriter::Caching->new('text/xml');
+    my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
     $writer->open_element(
         'schema', 
         { version => '0.1',
@@ -849,7 +849,7 @@ sub Transaction {
             
         }
     }
-    my $writer = Geo::OGC::Service::XMLWriter::Caching->new('text/xml');
+    my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
     $writer->open_element(
         'TransactionResponse', 
         { version => $self->{version},
