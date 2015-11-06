@@ -12,7 +12,7 @@ WriteMakefile(
                            "JSON" => 0,
                            "DBI" => 0,
                            "XML::LibXML::PrettyPrint" => 0, # for debugging
-                           "Geo::GDAL" => 2.0001, # we need a working vsistdout implementation
+                           "Geo::GDAL" => 2.00013, # we need a working vsistdout implementation, which will really be only in 2.0002, 2.00013 will get and build the latest 2.0 branch GDAL
                            "Geo::OGC::Service" => 0.05,
     },
     TEST_REQUIRES     => { "Plack::Test" => 0,
