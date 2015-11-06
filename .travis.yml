@@ -5,7 +5,7 @@ perl:
   - "5.22.0"
 
 before_install:
-  - sudo apt-get install libexpat-dev libpq-dev 
+  - sudo apt-get install libexpat-dev libpq-dev subversion
 
 install:
   - cpanm -v --installdeps --notest --mirror http://cpan.mirrors.travis-ci.org .

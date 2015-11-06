@@ -26,6 +26,7 @@ WriteMakefile(
                            "XML::LibXML" => 0,
                            "XML::LibXML::PrettyPrint" => 0,
                            "DBI" => 0,
+                           "DBD::Pg" => 0,
                            "XML::SemanticDiff" => 0,
                            "Geo::OGC::Service" => 0.05,
     },
