@@ -41,7 +41,7 @@ None by default.
 
 package Geo::OGC::Service::WFS;
 
-use 5.010000; # // and //=
+use 5.010000; # say // and //=
 use feature "switch";
 use Carp;
 use File::Basename;
@@ -144,7 +144,7 @@ The entry method into this service. Fails unless the request is well known.
 sub process_request {
     my ($self, $responder) = @_;
     $self->parse_request;
-    $self->{debug} = $self->{config}{debug};
+    $self->{debug} = $self->{config}{debug} // 0;
     $self->{responder} = $responder;
     if ($self->{parameters}{debug}) {
         $self->error({ 
