@@ -41,7 +41,7 @@ None by default.
 
 package Geo::OGC::Service::WFS;
 
-use 5.022000;
+use 5.010000; # // and //=
 use feature "switch";
 use Carp;
 use File::Basename;
@@ -55,7 +55,7 @@ use Geo::GDAL;
 use Data::Dumper;
 use XML::LibXML::PrettyPrint;
 
-our $VERSION = '0.04';
+our $VERSION = '0.06';
 
 our %gml_geometry_type = (
     Envelope => 1,
