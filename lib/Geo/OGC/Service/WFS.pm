@@ -55,6 +55,10 @@ use Geo::GDAL;
 use Data::Dumper;
 use XML::LibXML::PrettyPrint;
 
+use Geo::OGC::Service;
+use vars qw(@ISA);
+push @ISA, qw(Geo::OGC::Service::Common);
+
 our $VERSION = '0.07';
 
 our %gml_geometry_type = (
@@ -271,17 +275,7 @@ sub GetCapabilities {
     $ns{version} = $self->{version};
 
     $writer->open_element('wfs:WFS_Capabilities', \%ns);
-    $writer->element('ows:ServiceIdentification', 
-                     [['ows:Title', $self->{config}{Title}],
-                      ['ows:Abstract'],
-                      ['ows:ServiceType', {codeSpace=>"OGC"}, 'OGC WFS'],
-                      ['ows:ServiceTypeVersion', $self->{config}{ServiceTypeVersion}],
-                      ['ows:Fees'],
-                      ['ows:AccessConstraints']]);
-    $writer->element('ows:ServiceProvider',
-                     [['ows:ProviderName'],
-                      ['ows:ProviderSite', {'xlink:type'=>"simple", 'xlink:href'=>""}],
-                      ['ows:ServiceContact']]);
+    $self->DescribeService($writer);
     $self->OperationsMetadata($writer);
     $self->FeatureTypeList($writer);
     $self->Filter_Capabilities($writer);
@@ -293,15 +287,19 @@ sub OperationsMetadata  {
     my ($self, $writer) = @_;
     $writer->open_element('ows:OperationsMetadata');
     my @versions = split /,/, $self->{config}{AcceptVersions} // '2.0.0,1.1.0,1.0.0';
-    $self->Operation($writer, 'GetCapabilities', 
+    $self->Operation($writer, 'GetCapabilities',
+                     { Get => 1, Post => 1 },
                      [{service => ['WFS']}, 
                       {AcceptVersions => \@versions}, 
                       {AcceptFormats => ['text/xml']}]);
     $self->Operation($writer, 'DescribeFeatureType', 
+                     { Get => 1, Post => 1 },
                      [{outputFormat => [sort keys %OutputFormats]}]);
     $self->Operation($writer, 'GetFeature',
+                     { Get => 1, Post => 1 },
                      [{resultType => ['results']}, {outputFormat => [sort keys %OutputFormats]}]);
     $self->Operation($writer, 'Transaction',
+                     { Get => 1, Post => 1 },
                      [{inputFormat => ['text/xml; subtype=gml/3.1.1']}, 
                       {idgen => ['GenerateNew','UseExisting','ReplaceDuplicate']},
                       {releaseAction => ['ALL','SOME']}
@@ -332,29 +330,6 @@ sub OperationsMetadata  {
     $writer->element('ows:Constraint', {name => 'QueryExpressions'}, 
                      ['ows:AllowedValues' => ['ows:Value' => 'wfs:Query']]);
     $writer->close_element;
-}
-
-sub Operation {
-    my($self, $writer, $name, $parameters) = @_;
-    my @parameters;
-    for my $p (@$parameters) {
-        for my $n (keys %$p) {
-            my @values;
-            for my $v (@{$p->{$n}}) {
-                push @values, ['ows:Value', $v];
-            }
-            push @parameters, ['ows:Parameter', {name=>$n}, \@values];
-        }
-    }
-    $writer->element(
-        'ows:Operation', 
-        {name => $name}, 
-        [['ows:DCP', 
-          ['ows:HTTP', 
-           [['ows:Get', {'xlink:type'=>'simple', 'xlink:href'=>$self->{config}{resource}}],
-            ['ows:Post', {'xlink:type'=>'simple', 'xlink:href'=>$self->{config}{resource}}]]
-          ]],
-         @parameters]);
 }
 
 sub FeatureTypeList  {
