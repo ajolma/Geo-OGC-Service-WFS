@@ -15,7 +15,9 @@ WriteMakefile(
                            "XML::LibXML::PrettyPrint" => 0, # for debugging
                            "Geo::GDAL" => 2.00013, # we need a working vsistdout implementation, which will really be only in 2.0002, 2.00013 will get and build the latest 2.0 branch GDAL
                            "Geo::OGC::Service" => 0.05,
-                           "Data::Dumper" => 0
+                           "Data::Dumper" => 0,
+                           "File::MkTemp" => 0,
+                           "HTTP::Date" => 0
     },
     TEST_REQUIRES     => { "strict" => 0,
                            "warnings" => 0,

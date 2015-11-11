@@ -51,6 +51,8 @@ use Clone 'clone';
 use JSON;
 use DBI;
 use Geo::GDAL;
+use HTTP::Date;
+use File::MkTemp;
 
 use Data::Dumper;
 use XML::LibXML::PrettyPrint;
@@ -703,41 +705,105 @@ sub GetFeature {
     $format = $OutputFormats{$format} if $OutputFormats{$format};
     print STDERR "Output format (for GDAL creation): $format\n" if $self->{debug} > 2;
 
-    my $vsi = '/vsistdout/';
-    my $gml;
-    my $l2;
-
-    my $stdout = capture_stdout {
-        $gml = Geo::OGR::Driver('GML')->Create($vsi, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
-        $l2 = $gml->CreateLayer($type->{Name});
+    my $i = 0;
+    my $count = $query->{count};
+    if (Geo::GDAL::VersionInfo >= 2010000) {
+        # use streaming object
+        my $content_type = $self->{config}{'Content-Type'} // 'text/xml';
+        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
+        my $gml = Geo::OGR::Driver('GML')->Create(
+            $writer, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
+        my $l2 = $gml->CreateLayer($type->{Name});
         my $d = $layer->GetLayerDefn;
         for (0..$d->GetFieldCount-1) {
             my $f = $d->GetFieldDefn($_);
             $l2->CreateField($f);
         }
-    };
+        $layer->ResetReading;
+        while (my $f = $layer->GetNextFeature) {
+            $l2->CreateFeature($f);
+            $i++;
+            last if defined $count and $i >= $count;
+        }
+    }
+    elsif (Geo::GDAL::VersionInfo >= 2002000) {
+        # capture stdout, requires fix to close vsistdout bug
+        my $vsi = '/vsistdout/';
+        my $gml;
+        my $l2;
 
-    my $content_type = $self->{config}{'Content-Type'} // 'text/xml';
-    my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
-    $writer->write($stdout);
-
-    my $count = $query->{count};
-    my $i = 0;
-    $layer->ResetReading;
-    while (1) {
-        my $f = $layer->GetNextFeature;
         my $stdout = capture_stdout {
-            if ($f) {
-                $l2->CreateFeature($f);
-                $i++;
-            }
-            if (!$f or (defined $count and $i >= $count)) {
-                undef $l2;
-                undef $gml;
+            $gml = Geo::OGR::Driver('GML')->Create(
+                $vsi, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
+            $l2 = $gml->CreateLayer($type->{Name});
+            my $d = $layer->GetLayerDefn;
+            for (0..$d->GetFieldCount-1) {
+                my $f = $d->GetFieldDefn($_);
+                $l2->CreateField($f);
             }
         };
+
+        my $content_type = $self->{config}{'Content-Type'};
+        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
         $writer->write($stdout);
-        last unless $gml;
+        
+        $layer->ResetReading;
+        while (1) {
+            my $f = $layer->GetNextFeature;
+            my $stdout = capture_stdout {
+                if ($f) {
+                    $l2->CreateFeature($f);
+                    $i++;
+                }
+                if (!$f or (defined $count and $i >= $count)) {
+                    undef $l2;
+                    undef $gml;
+                }
+            };
+            $writer->write($stdout);
+            last unless $gml;
+        }
+    }
+    else {
+        # use temp file        
+        my $file = '/tmp/' . mktemp('tempXXXXXX', '/tmp').'.xml';
+        my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
+        {
+            # local variables, to close the file at the end
+            my $gml = Geo::OGR::Driver('GML')->Create(
+                $file, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
+            my $l2 = $gml->CreateLayer($type->{Name});
+            my $d = $layer->GetLayerDefn;
+            for (0..$d->GetFieldCount-1) {
+                my $f = $d->GetFieldDefn($_);
+                $l2->CreateField($f);
+            }
+            
+            $layer->ResetReading;
+            while (my $f = $layer->GetNextFeature) {
+                $l2->CreateFeature($f);
+                $i++;
+                last if defined $count and $i >= $count;
+            }
+        }
+
+        open my $fh, "<:raw", $file or return $self->return_403;
+
+        my @stat = stat $file;
+    
+        Plack::Util::set_io_path($fh, Cwd::realpath($file));
+    
+        $self->{responder}->([ 200, 
+                               [
+                                'Content-Type'   => $content_type,
+                                'Content-Length' => $stat[7],
+                                'Last-Modified'  => HTTP::Date::time2str( $stat[9] )
+                               ],
+                               $fh,
+                             ]);
+        unlink $file;
+        $file =~ s/xml$/xsd/;
+        unlink $file;
     }
     print STDERR "$i features served, max is ",$count//'not set',"\n" if $self->{debug};
 }
