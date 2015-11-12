@@ -709,8 +709,8 @@ sub GetFeature {
     my $count = $query->{count};
     if (Geo::GDAL::VersionInfo >= 2010000) {
         # use streaming object
-        my $content_type = $self->{config}{'Content-Type'} // 'text/xml';
-        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
+        my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
+        my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type ]]);
         my $gml = Geo::OGR::Driver('GML')->Create(
             $writer, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
         my $l2 = $gml->CreateLayer($type->{Name});
@@ -728,6 +728,9 @@ sub GetFeature {
     }
     elsif (Geo::GDAL::VersionInfo >= 2002000) {
         # capture stdout, requires fix to close vsistdout bug
+        my $content_type = $self->{config}{'Content-Type'};
+        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
+
         my $vsi = '/vsistdout/';
         my $gml;
         my $l2;
@@ -741,10 +744,7 @@ sub GetFeature {
                 my $f = $d->GetFieldDefn($_);
                 $l2->CreateField($f);
             }
-        };
-
-        my $content_type = $self->{config}{'Content-Type'};
-        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
+        };        
         $writer->write($stdout);
         
         $layer->ResetReading;
