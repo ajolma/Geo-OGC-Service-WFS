@@ -709,6 +709,7 @@ sub GetFeature {
     my $count = $query->{count};
     if (Geo::GDAL::VersionInfo >= 2010000) {
         # use streaming object
+        #say STDERR "use streaming object";
         my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
         my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type ]]);
         my $gml = Geo::OGR::Driver('GML')->Create(
@@ -726,8 +727,9 @@ sub GetFeature {
             last if defined $count and $i >= $count;
         }
     }
-    elsif (Geo::GDAL::VersionInfo >= 2002000) {
+    elsif (Geo::GDAL::VersionInfo >= 2000200) {
         # capture stdout, requires fix to close vsistdout bug
+        #say STDERR "capture stdout";
         my $content_type = $self->{config}{'Content-Type'};
         my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
 
@@ -765,7 +767,8 @@ sub GetFeature {
         }
     }
     else {
-        # use temp file        
+        # use temp file
+        #say STDERR "use tmp file";
         my $file = '/tmp/' . mktemp('tempXXXXXX', '/tmp').'.xml';
         my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
         {
