@@ -61,7 +61,7 @@ use Geo::OGC::Service;
 use vars qw(@ISA);
 push @ISA, qw(Geo::OGC::Service::Common);
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 our %gml_geometry_type = (
     Envelope => 1,
