@@ -343,7 +343,7 @@ sub FeatureTypeList  {
 
     my $list_layer = sub {
         my ($type) = @_;
-        $self->get_layer($type); # test only, now opens.. could be just name
+        # should we test that the layer is really available?
         my @formats;
         for my $format (sort keys %OutputFormats) {
             push @formats, ['wfs:Format', $format];
@@ -626,7 +626,7 @@ sub GetFeature {
     my $layer;
 
     if ($type && $type->{Layer}) {
-        $layer = $self->get_layer($type);
+        $layer = $self->{DataSource}->GetLayer($type->{Layer});
         $layer->SetSpatialFilterRect(@{$query->{BBOX}}) if $query->{BBOX};
     }
 
@@ -1025,7 +1025,8 @@ sub feature_type {
                 if (exists $type->{Layer}) {
                     if ($type->{Name} eq $name) {
                         $ret = clone($type);
-                        my $schema = $self->get_layer($type)->GetSchema;
+                        my $layer = $self->{DataSource}->GetLayer($type->{Layer});
+                        my $schema = $layer->GetSchema;
                         my %geometry_types = map {$_ => 1} Geo::OGR::GeometryTypes();
                         for my $field (@{$schema->{Fields}}) {
                             my $name = $field->{Name};
@@ -1195,12 +1196,6 @@ sub feature_types_in_data_source {
         }
     }
     return @feature_types;
-}
-
-sub get_layer {
-    my ($self, $type) = @_;
-    #my @n = $self->{DataSource}->GetLayerNames;
-    return $self->{DataSource}->GetLayer($type->{Layer});
 }
 
 # return WFS request in a hash
