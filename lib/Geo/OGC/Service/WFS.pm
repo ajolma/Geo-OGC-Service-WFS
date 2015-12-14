@@ -137,6 +137,8 @@ our %OutputFormats = (
     'text/xml; subtype=gml/3.1.1' => 'GML3',
     'text/xml; subtype=gml/3.2' => 'GML3.2',
     'GML3Deegree' => 'GML3Deegree',
+    'application/gml+xml; version=3.2' => 'GML3.2',
+    'application/json' => 'GeoJSON',
     );
 
 =pod
@@ -633,7 +635,7 @@ sub GetFeature {
     elsif ($type && $type->{Table}) {
 
         my $filter = filter2sql($query->{filter}, $type) // '';
-        my $epsg = $query->{EPSG};
+        my ($epsg) = $query->{EPSG} =~ /(\d+)/;
 
         # pseudo_credentials: these fields are required to be in the filter and they are not included as attributes
         my ($pseudo_credentials, @pseudo_credentials) = pseudo_credentials($type);
@@ -672,16 +674,16 @@ sub GetFeature {
             }
         }
 
-        my $geom = $type->{GeometryColumn};
+        my $geom = '"'.$type->{GeometryColumn}.'"';
         
-        my $sql = "select ".join(',',@cols)." from \"$type->{Table}\" where ST_IsValid(\"$geom\")";
+        my $sql = "select ".join(',',@cols)." from \"$type->{Table}\" where ST_IsValid($geom)";
 
-        $geom = "st_transform(\"$geom\",$epsg)" if defined $epsg;
-        $filter =~ s/GeometryColumn/$geom/g if $filter;
+        $geom = "st_transform($geom,$epsg)" if defined $epsg;
+        $filter =~ s/GeometryColumn/$type->{GeometryColumn}/g if $filter;
         $sql .= " AND $filter" if $filter;
-        $sql .= " AND (\"$geom\" && ST_MakeEnvelope(".join(",", @{$query->{BBOX}})."))" if $query->{BBOX};
+        $sql .= " AND ($geom && ST_MakeEnvelope(".join(",", @{$query->{BBOX}})."))" if $query->{BBOX};
 
-        print STDERR "$sql\n" if $self->{debug} > 2;
+        print STDERR "$sql\n" if $self->{debug};
         eval {
             $layer = $self->{DataSource}->ExecuteSQL($sql);
         };
@@ -710,11 +712,20 @@ sub GetFeature {
     if (Geo::GDAL::VersionInfo >= 2010000) {
         # use streaming object
         #say STDERR "use streaming object";
-        my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
-        my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type ]]);
-        my $gml = Geo::OGR::Driver('GML')->Create(
-            $writer, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
-        my $l2 = $gml->CreateLayer($type->{Name});
+        my $content_type;
+        if ($format =~ /GML/) {
+            $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
+        } elsif ($format =~ /JSON/) {
+            $content_type = 'application/json; charset=utf-8';
+        }
+        my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type, $self->CORS ]]);
+        my $output;
+        if ($format =~ /GML/) {
+            $output = Geo::OGR::Driver('GML')->Create($writer, { TARGET_NAMESPACE => $ns, PREFIX => $prefix, FORMAT => $format });
+        } elsif ($format =~ /JSON/) {
+            $output = Geo::OGR::Driver('GeoJSON')->Create($writer);
+        }
+        my $l2 = $output->CreateLayer($type->{Name});
         my $d = $layer->GetLayerDefn;
         for (0..$d->GetFieldCount-1) {
             my $f = $d->GetFieldDefn($_);
@@ -730,8 +741,9 @@ sub GetFeature {
     elsif (Geo::GDAL::VersionInfo >= 2000200) {
         # capture stdout, requires fix to close vsistdout bug
         #say STDERR "capture stdout";
-        my $content_type = $self->{config}{'Content-Type'};
-        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $content_type);
+        my $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
+        my $headers = ['Content-Type' => $content_type, $self->CORS];
+        my $writer = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder}, $headers);
 
         my $vsi = '/vsistdout/';
         my $gml;
@@ -800,7 +812,8 @@ sub GetFeature {
                                [
                                 'Content-Type'   => $content_type,
                                 'Content-Length' => $stat[7],
-                                'Last-Modified'  => HTTP::Date::time2str( $stat[9] )
+                                'Last-Modified'  => HTTP::Date::time2str( $stat[9] ),
+                                $self->CORS
                                ],
                                $fh,
                              ]);
