@@ -27,7 +27,7 @@ end
 
 my $parser = XML::LibXML->new(no_blanks => 1);
 my $dom = $parser->load_xml(string => $xml);
-my $sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom' });
+my $sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom' });
 is $sql, '("geom" && ST_MakeEnvelope(231640,6794667,237728,6798990))';
 
 $xml = <<end;
@@ -39,7 +39,7 @@ end
 
 $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
-$sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
+$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
 is $sql, "fid = 'InWaterA_1M.1234' OR fid = 'InWaterA_1M.1235'";
 
 $xml = <<end; # from page 132 of 09-025r1, but bug fixed
@@ -58,7 +58,7 @@ end
 
 $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
-$sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
+$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
 is $sql, "(NOT ST_Disjoint(\"geoTemp\", ST_MakeEnvelope(46.2023,-57.9118,51.8145,-46.6873,4326)))";
 
 $xml = <<end;
@@ -80,7 +80,7 @@ end
 
 $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
-$sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
+$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
 is $sql, "ST_Within(\"wkbGeom\", ST_GeometryFromText('POLYGON ((-30.15 115.03, -30.17 115.02, -30.16 115.02, -30.15 115.02, -30.15 115.02, -30.15 115.02, -30.14 115.03, -30.15 115.03))',4326))";
 
 $xml = <<end;
@@ -100,5 +100,5 @@ end
 
 $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
-$sql = Geo::OGC::Service::WFS::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
+$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
 is $sql, "(GeometryColumn && ST_MakeEnvelope(2343329.7146568,8601226.8962494,2534422.2853432,8729641.1037506,3857))";
