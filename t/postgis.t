@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-
+use Carp;
 use Test::More tests => 8;
 use Plack::Test;
 use HTTP::Request::Common;
@@ -13,33 +13,43 @@ BEGIN { use_ok('Geo::OGC::Service::WFS') };
 
 # create a test database first
 
-my $connect = "dbi:Pg:dbname=postgres";
 my $user = getlogin || getpwuid($<) || "Kilroy";
 my $pass = $user;
-my $error;
 my $test_db = 'wfstest';
-my $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
-if ($dbh) {
-    $dbh->do("DROP DATABASE IF EXISTS $test_db"); # a bit dangerous, remove from releases
-    if ($dbh->do("create database $test_db encoding 'UTF-8'")) {
-        $connect = "dbi:Pg:dbname=$test_db";
-        $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
-        if ($dbh->do("CREATE EXTENSION postgis")) {
-            $dbh->do("create table test (id serial primary key, i int, d double precision, s text, p text, geom geometry)");
-            $dbh->do("insert into test (i, d, s, p, geom) values (1, 2.1, 'hello', 'pass', st_geometryfromtext('POINT (1 2)'))");
-        } else {
-            $error = $dbh->errstr;
-        }
-    } else {
-        $error = $dbh->errstr;
-    }
-} else {
-    $error = $DBI::errstr;
+my $dbh;    
+
+sub setup_db {
+    my $connect = "dbi:Pg:dbname=postgres";
+    my %attr = (PrintError => 0, RaiseError => 1, AutoCommit => 1);
+    $dbh = DBI->connect($connect, $user, $pass, \%attr);
+    my ($e) = $dbh->selectrow_array("SELECT datname FROM pg_database WHERE datname='$test_db'");
+    return "Database '$test_db' exists, skipping." if $e;
+    $dbh->do("CREATE DATABASE $test_db encoding 'UTF-8'");
+    $connect = "dbi:Pg:dbname=$test_db";
+    $dbh = DBI->connect($connect, $user, $pass, \%attr);
+    # check for postgis before creating it
+    ($e) = $dbh->selectrow_array("SELECT extname FROM pg_extension WHERE extname='postgis'");
+    $dbh->do("CREATE EXTENSION postgis") unless $e;
+    $dbh->do("CREATE TABLE test (id serial primary key, i int, d double precision, s text, p text, geom geometry)");
+    $dbh->do("INSERT INTO test (i, d, s, p, geom) VALUES (1, 2.1, 'hello', 'pass', st_geometryfromtext('POINT (1 2)'))");
 }
+
+sub cleanup {
+    my $connect = "dbi:Pg:dbname=postgres";
+    my %attr = (PrintError => 0, RaiseError => 1, AutoCommit => 1);
+    $dbh = DBI->connect($connect, $user, $pass, \%attr);
+    $dbh->do("DROP DATABASE IF EXISTS $test_db");
+}
+
+eval {
+    setup_db();
+};
+my $error = $@;
+
 my $pp = XML::LibXML::PrettyPrint->new(indent_string => "  ");
 
 SKIP: {
-    skip "Skip PostGIS tests. Reason: can't connect to database '$connect': ".$error, 7 if $error;
+    skip "Skip PostGIS tests. Reason: can't create or connect to database '$test_db': ".$error, 7 if $error;
 
     my $config = {
         "resource" => "/",
@@ -273,8 +283,5 @@ end
         }
     };
 
-    #$connect = "dbi:Pg:dbname=postgres";
-    #$dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 });
-    #$dbh->do("drop database wfstest")
-    
+    cleanup();
 }

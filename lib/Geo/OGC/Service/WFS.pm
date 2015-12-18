@@ -491,7 +491,8 @@ sub GetFeature {
     elsif ($type && $type->{Table}) {
 
         my $filter = filter2sql($query->{filter}, $type) // '';
-        my ($epsg) = $query->{EPSG} =~ /(\d+)/;
+        my $epsg;
+        ($epsg) = $query->{EPSG} =~ /(\d\d\d\d+)/ if $query->{EPSG};
 
         # pseudo_credentials: these fields are required to be in the filter and they are not included as attributes
         my ($pseudo_credentials, @pseudo_credentials) = pseudo_credentials($type);
