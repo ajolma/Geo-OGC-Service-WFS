@@ -8,7 +8,7 @@ push @ISA, qw(Geo::OGC::Service::Common);
 
 require Exporter;
 push @ISA, qw(Exporter);
-our @EXPORT_OK = qw(parse_tag parse_name strip get_integer latest_version);
+our @EXPORT_OK = qw(filter2sql parse_tag parse_name strip get_integer latest_version);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 our %gml_geometry_type = (

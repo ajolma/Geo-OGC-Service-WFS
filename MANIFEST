@@ -14,3 +14,4 @@ t/test.shx
 t/filter.t
 t/postgis.t
 lib/Geo/OGC/Service/WFS.pm
+lib/Geo/OGC/Service/Filter.pm
