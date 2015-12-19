@@ -157,9 +157,9 @@ sub Filter_Capabilities  {
 }
 
 sub error {
-    my ($self, $msg) = @_;
+    my ($self, $msg, $headers) = @_;
     if (!$msg->{debug}) {
-        Geo::OGC::Service::error($self->{responder}, $msg);
+        Geo::OGC::Service::error($self->{responder}, $msg, $headers);
     } else {
         my $json = JSON->new;
         $json->allow_blessed([1]);
