@@ -523,7 +523,7 @@ sub GetFeature {
             next if $type->{Schema}{$col}{out_type} eq 'gml:GeometryPropertyType' && not $is_geometry;
 
             if (defined $epsg and $is_geometry) {
-                push @cols, "st_transform(\"$col\",$epsg) as \"$name\"";
+                push @cols, "ST_Transform(\"$col\",$epsg) as \"$name\"";
             } else {
                 $filter =~ s/$name/$col/g if $filter;
                 $name = 'gml_id' if defined $type->{"gml:id"} && $col eq $type->{"gml:id"};
@@ -533,12 +533,12 @@ sub GetFeature {
 
         my $geom = '"'.$type->{GeometryColumn}.'"';
         
-        my $sql = "select ".join(',',@cols)." from \"$type->{Table}\" where ST_IsValid($geom)";
+        my $sql = "SELECT ".join(',',@cols)." FROM \"$type->{Table}\" WHERE ST_IsValid($geom)";
 
-        $geom = "st_transform($geom,$epsg)" if defined $epsg;
+        $geom = "ST_Transform($geom,$epsg)" if defined $epsg;
         $filter =~ s/GeometryColumn/$type->{GeometryColumn}/g if $filter;
         $sql .= " AND $filter" if $filter;
-        $sql .= " AND ($geom && ST_MakeEnvelope(".join(",", @{$query->{BBOX}})."))" if $query->{BBOX};
+        $sql .= " AND ($geom && ST_Transform(ST_MakeEnvelope(".join(",", @{$query->{BBOX}}).")),$type->{SRID})" if $query->{BBOX};
 
         print STDERR "$sql\n" if $self->{debug};
         eval {
@@ -1039,6 +1039,7 @@ sub feature_types_in_data_source {
                 DefaultSRS => "$auth_name:$auth_srid",
                 Table => $table,
                 GeometryColumn => $geom,
+                SRID => $auth_srid,
                 Schema => \%schema
             };
             for my $n ($shortname, $name) {
