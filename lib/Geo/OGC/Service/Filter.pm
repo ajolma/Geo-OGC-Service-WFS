@@ -272,12 +272,12 @@ sub filter2sql {
         my ($ns, $n) = parse_tag($node);
         if ($n eq 'Envelope') {
             my $envelope = filter2sql($node, $type);
-            return "(GeometryColumn && $envelope)";
+            return "(GeometryColumn && ST_Transform($envelope,$type->{SRID}))";
         } else {
             my $property = filter2sql($node, $type);
             $node = $node->nextSibling;
             my $envelope = filter2sql($node, $type);
-            return "($property && $envelope)";
+            return "($property && ST_Transform($envelope,$type->{SRID}))";
         }
 
     } elsif ($spatial2op{$name}) {
