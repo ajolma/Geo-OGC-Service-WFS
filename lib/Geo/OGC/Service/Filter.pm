@@ -278,7 +278,7 @@ sub filter2sql {
             $node = $node->nextSibling;
         }
         my $envelope = filter2sql($node, $type);
-        if (exists $type->{SRID} && $type->{SRID} >= 0) {
+        if (exists $type->{SRID} && $type->{SRID} > 0) {
             $envelope = "ST_Transform($envelope,$type->{SRID})";
         }
         return "($property && $envelope)";
