@@ -27,8 +27,8 @@ end
 
 my $parser = XML::LibXML->new(no_blanks => 1);
 my $dom = $parser->load_xml(string => $xml);
-my $sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom' });
-is $sql, '("geom" && ST_MakeEnvelope(231640,6794667,237728,6798990))';
+my $sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', SRID => 3067 });
+is $sql, '("geom" && ST_Transform(ST_MakeEnvelope(231640,6794667,237728,6798990),3067))';
 
 $xml = <<end;
 <fes:Filter xmlns:fes="http://www.opengis.net/fes/2.0">
@@ -100,5 +100,5 @@ end
 
 $parser = XML::LibXML->new(no_blanks => 1);
 $dom = $parser->load_xml(string => $xml);
-$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid' });
-is $sql, "(GeometryColumn && ST_MakeEnvelope(2343329.7146568,8601226.8962494,2534422.2853432,8729641.1037506,3857))";
+$sql = Geo::OGC::Service::Filter::filter2sql($dom->documentElement(), { GeometryColumn => 'geom', "gml:id" => 'fid', SRID => 3210 });
+is $sql, "(GeometryColumn && ST_Transform(ST_MakeEnvelope(2343329.7146568,8601226.8962494,2534422.2853432,8729641.1037506,3857),3210))";

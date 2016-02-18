@@ -270,16 +270,19 @@ sub filter2sql {
     } elsif ($name eq 'BBOX') {
         $node = $node->firstChild;
         my ($ns, $n) = parse_tag($node);
+        my $property;
         if ($n eq 'Envelope') {
-            my $envelope = filter2sql($node, $type);
-            return "(GeometryColumn && ST_Transform($envelope,$type->{SRID}))";
+            $property = 'GeometryColumn';
         } else {
-            my $property = filter2sql($node, $type);
+            $property = filter2sql($node, $type);
             $node = $node->nextSibling;
-            my $envelope = filter2sql($node, $type);
-            return "($property && ST_Transform($envelope,$type->{SRID}))";
         }
-
+        my $envelope = filter2sql($node, $type);
+        if (exists $type->{SRID} && $type->{SRID} >= 0) {
+            $envelope = "ST_Transform($envelope,$type->{SRID})";
+        }
+        return "($property && $envelope)";
+        
     } elsif ($spatial2op{$name}) {
         $node = $node->firstChild;
         my $geom1 = filter2sql($node, $type);
