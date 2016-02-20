@@ -462,22 +462,24 @@ with layer name falling back to FeatureType).
 
 sub GetFeature {
     my ($self) = @_;
-    
+
     my $query = $self->{request}{queries}[0]; # actually we should loop through all queries?
     my ($typename) = split(/\s*,\s*/, $query->{typename});
     
     unless ($typename) {
         $self->error({ exceptionCode => 'MissingParameterValue',
-                       locator => 'typeName' });
+                       locator => 'typeName' },
+                     [$self->CORS]);
         return;
     }
-    
+
     my $type = $self->feature_type($typename);
 
     unless ($type) {
         $self->error({ exceptionCode => 'InvalidParameterValue',
                        locator => 'typeName',
-                       ExceptionText => "Type '$typename' is not available" });
+                       ExceptionText => "Type '$typename' is not available" },
+                     [$self->CORS]);
         return;
     }
 
@@ -550,7 +552,8 @@ sub GetFeature {
     unless ($layer) {
         $self->error({ exceptionCode => 'InvalidParameterValue',
                        locator => 'typeName',
-                       ExceptionText => "Type '$typename' is not available (or there was an internal or configuration error)" });
+                       ExceptionText => "Type '$typename' is not available (or there was an internal or configuration error)" },
+                     [$self->CORS]);
         return;
     }
 
@@ -566,6 +569,7 @@ sub GetFeature {
 
     my $i = 0;
     my $count = $query->{count};
+
     if (Geo::GDAL::VersionInfo >= 2010000) {
         # use streaming object
         #say STDERR "use streaming object";
@@ -958,12 +962,12 @@ sub feature_type {
 sub feature_types_in_data_source {
     my ($self, $type) = @_;
     return unless $type->{DataSource} =~ /^Pg:/;
-
+    
     my $dbi = DataSource2dbi($type->{DataSource});
     my ($connect, $user, $pass) = split / /, $dbi;
     my $dbh = DBI->connect($connect, $user, $pass, { PrintError => 0, RaiseError => 0 }) 
         or croak("Can't connect to database '$connect': ".$DBI::errstr);
-    $dbh->{pg_enable_utf8} = 1;
+    #$dbh->{pg_enable_utf8} = 1; Use of the default is highly encouraged.
     my $sth = $dbh->table_info( '', 'public', undef, "'TABLE','VIEW'" );
     my @tables;
     while (my $data = $sth->fetchrow_hashref) {
@@ -1016,12 +1020,14 @@ sub feature_types_in_data_source {
 
             my $prefix = $type->{prefix};
             my $shortname = $table.'.'.$geom;
-            # wash the name
-            $shortname =~ s/ /_/g;
-            $shortname =~ s/[åö]/o/g;
-            $shortname =~ s/ä/a/g;
-            $shortname =~ s/[ÅÖ]/O/g;
-            $shortname =~ s/Ä/A/g;
+            if (0) {
+                # wash the name
+                $shortname =~ s/ /_/g;
+                $shortname =~ s/[åö]/o/g;
+                $shortname =~ s/ä/a/g;
+                $shortname =~ s/[ÅÖ]/O/g;
+                $shortname =~ s/Ä/A/g;
+            }
             my $name = $prefix.'.'.$shortname;
             if ($type->{allow} and !($type->{allow}{$shortname} or $type->{allow}{$name})) {
                 print STDERR "not allowed.\n" if $self->{debug} > 2;
