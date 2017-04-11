@@ -62,7 +62,7 @@ use Geo::OGC::Service::Filter ':all';
 use vars qw(@ISA);
 push @ISA, qw(Geo::OGC::Service::Filter);
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 # GDAL and PostgreSQL data type to XML data type
 our %type_map = (
@@ -939,9 +939,11 @@ sub feature_type {
                 my $out_name = $in_name;
 
                 # field name adjustments as GDAL does them
-                $out_name =~ s/ /_/g; 
+                $out_name =~ s/ /_/g;
+                $out_name =~ s/-/_/g;
                 
                 # extra name adjustments, needed by QGIS
+                # this has no effect now since no 'use utf8'.. FIXME?
                 $out_name =~ s/[åö]/o/g;
                 $out_name =~ s/ä/a/g;
                 $out_name =~ s/[ÅÖ]/O/g;
@@ -1020,14 +1022,18 @@ sub feature_types_in_data_source {
 
             my $prefix = $type->{prefix};
             my $shortname = $table.'.'.$geom;
+
+            # XML layer names can't have spaces
+            $shortname =~ s/ /_/g;
+                
             if (0) {
-                # wash the name
-                $shortname =~ s/ /_/g;
+                # if this is enabled then use utf8 is needed at least for åäöÅÄÖ
                 $shortname =~ s/[åö]/o/g;
                 $shortname =~ s/ä/a/g;
                 $shortname =~ s/[ÅÖ]/O/g;
                 $shortname =~ s/Ä/A/g;
             }
+
             my $name = $prefix.'.'.$shortname;
             if ($type->{allow} and !($type->{allow}{$shortname} or $type->{allow}{$name})) {
                 print STDERR "not allowed.\n" if $self->{debug} > 2;

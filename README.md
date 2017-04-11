@@ -1,4 +1,4 @@
-Geo-OGC-Service-WFS version 0.01
+Geo-OGC-Service-WFS version 0.10
 ================================
 
 A web feature service.
@@ -20,7 +20,7 @@ Geo::GDAL Geo::OGC::Service
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2015 by Ari Jolma
+Copyright (C) 2015-2017 by Ari Jolma
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.22.0 or,

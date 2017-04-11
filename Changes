@@ -1,3 +1,9 @@
+0.10, April 11, 2017
+  * Separated the Filter module from the main module (no functional changes).
+  * Headers can be set now in error responses.
+  * BBOX in query is now transformed to the SRID of the data.
+  * Error replies include CORS headers.
+
 0.09, Dec 15, 2015
   * Probably the first really useful release.
   * Add JSON format in GetFeature

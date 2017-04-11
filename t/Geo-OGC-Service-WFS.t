@@ -14,6 +14,7 @@ use HTTP::Request::Common;
 use Geo::OGC::Service;
 use XML::LibXML;
 use XML::SemanticDiff;
+use XML::LibXML::PrettyPrint;
 BEGIN { use_ok('Geo::OGC::Service::WFS') };
 
 #########################
@@ -37,14 +38,21 @@ test_psgi $app, sub {
     if ($@) {
         is $@, 0;
     } else {
+        my $expected = <<'END_XML';
+<?xml version="1.0" encoding="UTF-8"?>
+<ExceptionReport version="1.0">
+<Exception exceptionCode="MissingParameterValue" locator="request"/>
+</ExceptionReport>
+END_XML
         my $diff = XML::SemanticDiff->new();
-        my @diff = $diff->compare(
-            $res->content, 
-            '<?xml version="1.0" encoding="UTF-8"?>'.
-            '<ExceptionReport version="1.0">'.
-            '<Exception exceptionCode="MissingParameterValue" locator="request"/>'.
-            '</ExceptionReport>');
+        my @diff = $diff->compare($res->content, $expected);
         my $n = @diff;
+        if ($n) {
+            my $pp = XML::LibXML::PrettyPrint->new(indent_string => "  ");
+            print STDERR "Got:\n",$pp->pretty_print($dom)->toString;
+            $dom = $parser->load_xml(string => $expected);
+            print STDERR "Expected:\n",$pp->pretty_print($dom)->toString;
+        }
         is $n, 0;
     }
 };
@@ -75,16 +83,23 @@ test_psgi $app, sub {
     if ($@) {
         is $@, 0;
     } else {
+        my $expected = <<'END_XML';
+<?xml version="1.0" encoding="UTF-8"?>
+<ExceptionReport version="1.0">
+<Exception exceptionCode="InvalidParameterValue" locator="typeName">
+<ExceptionText>Type 'x' is not available</ExceptionText>
+</Exception>
+</ExceptionReport>
+END_XML
         my $diff = XML::SemanticDiff->new();
-        my @diff = $diff->compare(
-            $res->content, 
-            '<?xml version="1.0" encoding="UTF-8"?>'.
-            '<ExceptionReport version="1.0">'.
-            '<Exception exceptionCode="InvalidParameterValue">'.
-            "<ExceptionText>Type 'x' is not available</ExceptionText>".
-            '</Exception>'.
-            '</ExceptionReport>');
+        my @diff = $diff->compare($res->content, $expected);
         my $n = @diff;
+        if ($n) {
+            my $pp = XML::LibXML::PrettyPrint->new(indent_string => "  ");
+            print STDERR "Got:\n",$pp->pretty_print($dom)->toString;
+            $dom = $parser->load_xml(string => $expected);
+            print STDERR "Expected:\n",$pp->pretty_print($dom)->toString;
+        }
         is $n, 0;
     }
 };
