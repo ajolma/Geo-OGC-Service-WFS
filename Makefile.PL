@@ -14,7 +14,7 @@ WriteMakefile(
                            "Clone" => 0,
                            "JSON" => 0,
                            "DBI" => 0,
-                           "Geo::GDAL" => 2, # probably a sensible minimum
+                           "Geo::GDAL" => 2.1, # to use streaming objects
                            "HTTP::Date" => 0,
                            "File::MkTemp" => 0,
                            "Data::Dumper" => 0,
