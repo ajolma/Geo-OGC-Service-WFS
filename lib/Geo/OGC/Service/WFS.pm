@@ -581,6 +581,8 @@ sub GetFeature {
     # OpenLayers 2: FORMAT (not set), TARGET_NAMESPACE (http://ogr.maptools.org/), and PREFIX (ogr)
     # OpenLayers 4: FORMAT (GML3), TARGET_NAMESPACE (http://www.opengis.net/gml), and PREFIX (ogr)
 
+    # tweaked GML is for getting transactions to work with OpenLayers v4
+
     my %creation_options;
     $creation_options{FORMAT} = $self->{request}{outputformat} // $self->{config}{FORMAT} // $type->{FORMAT} // 'GML2';
     for my $format ($creation_options{FORMAT}) {
@@ -606,6 +608,61 @@ sub GetFeature {
     }
 
     print STDERR "format is $creation_options{FORMAT}\n" if $self->{debug};
+
+    if ($creation_options{FORMAT} eq 'tweaked GML') {
+        my $output = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder});
+        $output->prolog;
+        my $ns = $creation_options{PREFIX};
+        my %ns = (
+            %wfs_1_1_0_ns,
+            "xmlns:$ns" => $creation_options{TARGET_NAMESPACE},
+            #numberOfFeatures => "13",
+            #timeStamp => "2017-09-12T12:01:14.358Z",
+            );
+        #$ns{'xsi:schemaLocation'} .=
+            #"&amp;version=1.1.0".
+            #"&amp;request=DescribeFeatureType".
+            #"&amp;typeName=smartsea%3Awfs%3Awfs%3Ageometry"
+        $output->open_element('wfs:FeatureCollection' => \%ns);
+        $output->open_element('gml:featureMembers');
+        $layer->ResetReading;
+        my $gml_polygon = '<gml:Polygon srsName="http://www.opengis.net/gml/srs/epsg.xml#3857" srsDimension="2">';
+        while (my $f = $layer->GetNextFeature) {
+            my $row = $f->Row;
+            $output->open_element("$ns:wfs" => {'gml:id' => $row->{id}});
+            for my $key (keys %$row) {
+                next if $key eq 'FID';
+                next if $key eq 'id';
+                my $value = $row->{$key};
+                if ($key eq 'Geometry' or $key eq 'geometryProperty') {
+                    my $type = $value->GeometryType;
+                    $type =~ s/M//;
+                    $type =~ s/Z//;
+                    $type =~ s/25D//;
+                    my $points = $value->Points;
+                    my $gml;
+                    if ($type eq 'Polygon') {
+                        my $exterior = $points->[0];
+                        $gml = $gml_polygon;
+                        $gml .= '<gml:exterior><gml:LinearRing><gml:posList>';
+                        $_ = "@$_[0..1]" foreach @$exterior;
+                        $gml .= join(' ', @$exterior);
+                        $gml .= '</gml:posList></gml:LinearRing></gml:exterior>';
+                        $gml .= '</gml:Polygon>';
+                    }
+                    $output->element("$ns:geometry", $gml);
+                } else {
+                    $output->element("$ns:".lc($key), $value);
+                }
+            }
+            $output->close_element;
+            $i++;
+            last if $i >= $count;
+        }
+        $output->close_element;
+        $output->close_element;
+        return;
+    }
 
     my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type, $self->CORS ]]);
     my $output = Geo::OGR::Driver('GML')->Create($writer, \%creation_options );
