@@ -87,6 +87,35 @@ our %type_map = (
     boolean => "xs:boolean",
     );
 
+our %well_known_w3_ns = (
+    'xmlns:xlink' => "http://www.w3.org/1999/xlink",
+    'xmlns:xs'    => "http://www.w3.org/2001/XMLSchema",
+    'xmlns:xsi'   => "http://www.w3.org/2001/XMLSchema-instance",
+    );
+
+our %wfs_1_1_0_ns = (
+    %well_known_w3_ns,
+    xmlns => "http://www.opengis.net/wfs",
+    'xmlns:wfs' => "http://www.opengis.net/wfs",
+    'xmlns:gml' => "http://www.opengis.net/gml",
+    'xmlns:ows' => "http://www.opengis.net/ows",
+    'xmlns:ogc' => "http://www.opengis.net/ogc",
+    'xsi:schemaLocation' => "http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd"
+    );
+
+our %wfs_2_0_0_ns = (
+    %well_known_w3_ns,
+    xmlns => "http://www.opengis.net/wfs/2.0",
+    'xmlns:wfs' => "http://www.opengis.net/wfs/2.0",
+    'xmlns:gml' => "http://schemas.opengis.net/gml",
+    'xmlns:ows' => "http://www.opengis.net/ows/1.1",
+    'xmlns:fes' => "http://www.opengis.net/fes/2.0",
+    'xmlns:srv' => "http://schemas.opengis.net/iso/19139/20060504/srv/srv.xsd",
+    'xmlns:gmd' => "http://schemas.opengis.net/iso/19139/20060504/gmd/gmd.xsd",
+    'xmlns:gco' => "http://schemas.opengis.net/iso/19139/20060504/gco/gco.xsd",
+    'xsi:schemaLocation' => "http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0/wfs.xsd"
+    );
+
 # Value in request => GDAL GML creation option
 our %OutputFormats = (
     'XMLSCHEMA' => 'GML2',
@@ -97,6 +126,11 @@ our %OutputFormats = (
     'application/gml+xml; version=3.2' => 'GML3.2',
     'application/json' => 'GeoJSON',
     );
+
+our @GDAL_GML_Creation_options = (qw/XSISCHEMAURI XSISCHEMA PREFIX
+STRIP_PREFIX TARGET_NAMESPACE FORMAT GML3_LONGSRS SRSNAME_FORMAT
+SRSDIMENSION_LOC WRITE_FEATURE_BOUNDED_BY SPACE_INDENTATION GML_ID
+NAME DESCRIPTION/);
 
 =pod
 
@@ -194,47 +228,17 @@ sub GetCapabilities {
 
     my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
 
-    my %inspireNameSpace = (
-        'xmlns:inspire_dls' => "http://inspire.ec.europa.eu/schemas/inspire_dls/1.0",
-        'xmlns:inspire_common' => "http://inspire.ec.europa.eu/schemas/common/1.0"
-        );
-    my $inspireSchemaLocations = 
-        'http://inspire.ec.europa.eu/schemas/common/1.0 '.
-        'http://inspire.ec.europa.eu/schemas/common/1.0/common.xsd '.
-        'http://inspire.ec.europa.eu/schemas/inspire_dls/1.0 '.
-        'http://inspire.ec.europa.eu/schemas/inspire_dls/1.0/inspire_dls.xsd';
+    
     
     my %ns;
     if ($self->{version} eq '2.0.0') {
-        %ns = (
-            xmlns => "http://www.opengis.net/wfs/2.0" ,
-            'xmlns:gml' => "http://schemas.opengis.net/gml",
-            'xmlns:wfs' => "http://www.opengis.net/wfs/2.0",
-            'xmlns:ows' => "http://www.opengis.net/ows/1.1",
-            'xmlns:xlink' => "http://www.w3.org/1999/xlink",
-            'xmlns:xsi' => "http://www.w3.org/2001/XMLSchema-instance",
-            'xmlns:fes' => "http://www.opengis.net/fes/2.0",
-            'xmlns:xs' => "http://www.w3.org/2001/XMLSchema",
-            'xmlns:srv' => "http://schemas.opengis.net/iso/19139/20060504/srv/srv.xsd",
-            'xmlns:gmd' => "http://schemas.opengis.net/iso/19139/20060504/gmd/gmd.xsd",
-            'xmlns:gco' => "http://schemas.opengis.net/iso/19139/20060504/gco/gco.xsd",
-            'xsi:schemaLocation' => "http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0/wfs.xsd",
-            );
+        %ns = (%wfs_2_0_0_ns);
         # updateSequence="260" ?
     } else {
-        %ns = (
-            xmlns => "http://www.opengis.net/wfs",
-            'xmlns:gml' => "http://www.opengis.net/gml",
-            'xmlns:wfs' => "http://www.opengis.net/wfs",
-            'xmlns:ows' => "http://www.opengis.net/ows",
-            'xmlns:xlink' => "http://www.w3.org/1999/xlink",
-            'xmlns:xsi' => "http://www.w3.org/2001/XMLSchema-instance",
-            'xmlns:ogc' => "http://www.opengis.net/ogc",
-            'xsi:schemaLocation' => "http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd"
-            );
+        %ns = (%wfs_1_1_0_ns);
     }
     $ns{version} = $self->{version};
-
+    
     $writer->open_element('wfs:WFS_Capabilities', \%ns);
     $self->DescribeService($writer);
     $self->OperationsMetadata($writer);
@@ -375,20 +379,17 @@ sub DescribeFeatureType {
     }
 
     my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
-    $writer->open_element(
-        'schema', 
-        { version => '0.1',
-          targetNamespace => "http://mapserver.gis.umn.edu/mapserver",
-          xmlns => "http://www.w3.org/2001/XMLSchema",
-          'xmlns:ogr' => "http://ogr.maptools.org/",
-          'xmlns:ogc' => "http://www.opengis.net/ogc",
-          'xmlns:xsd' => "http://www.w3.org/2001/XMLSchema",
-          'xmlns:gml' => "http://www.opengis.net/gml",
-          elementFormDefault => "qualified" });
-    $writer->element(
-        'import', 
-        { namespace => "http://www.opengis.net/gml",
-          schemaLocation => "http://schemas.opengis.net/gml/2.1.2/feature.xsd" } );
+    
+    $writer->open_element(schema => { 
+        targetNamespace => $self->{config}{targetNamespace},
+        xmlns => "http://www.w3.org/2001/XMLSchema",
+        'xmlns:gml' => "http://schemas.opengis.net/gml",
+        elementFormDefault => "qualified",
+        attributeFormDefault => "unqualified" });
+    
+    $writer->element(import => { 
+        namespace => "http://www.opengis.net/gml",
+        schemaLocation => "http://schemas.opengis.net/gml/2.1.2/feature.xsd" });
 
     for my $name (sort keys %types) {
         my $type = $types{$name};
@@ -568,100 +569,47 @@ sub GetFeature {
     }
 
     my $i = 0;
-    my $count = $query->{count} // $self->{config}{max_count} // 1000000;
-  
-    if ($self->{config}{mimic_geoserver}) {
-        my $output = Geo::OGC::Service::XMLWriter::Streaming->new($self->{responder});
-        $output->prolog;
-        my %ns = (
-            'xmlns:xs' => "http://www.w3.org/2001/XMLSchema",
-            'xmlns:wfs' => "http://www.opengis.net/wfs",
-            'xmlns:gml' => "http://www.opengis.net/gml",
-            'xmlns:smartsea' => $self->{config}{TARGET_NAMESPACE},
-            'xmlns:ogc' => "http://www.opengis.net/ogc",
-            'xmlns:ows' => "http://www.opengis.net/ows",
-            'xmlns:xlink' => "http://www.w3.org/1999/xlink",
-            'xmlns:xsi' => "http://www.w3.org/2001/XMLSchema-instance",
-            #numberOfFeatures => "13",
-            #timeStamp => "2017-09-12T12:01:14.358Z",
-            'xsi:schemaLocation' => 
-            "http://www.opengis.net/wfs ".
-            "http://schemas.opengis.net/wfs/1.1.0/wfs.xsd ".
-            "$self->{config}{TARGET_NAMESPACE} "
-            #"&amp;version=1.1.0".
-            #"&amp;request=DescribeFeatureType".
-            #"&amp;typeName=smartsea%3Awfs%3Awfs%3Ageometry"
-            );
-        $output->open_element('wfs:FeatureCollection' => \%ns);
-        $output->open_element('gml:featureMembers');
+    my $count = min($query->{count}, $self->{config}{max_count}, 1000000);
+    my $result_type = $query->{resulttype} // 'results'; # real data instead of number of features
+    my ($content_type, $driver);
 
-        my $ns = $self->{config}{NAMESPACE};
-        $layer->ResetReading;
-        while (my $f = $layer->GetNextFeature) {
-            my $row = $f->Row;
-            $output->open_element("$ns:wfs" => {'gml:id' => $row->{id}});
-            for my $key (keys %$row) {
-                next if $key eq 'FID';
-                next if $key eq 'id';
-                my $value = $row->{$key};
-                if ($key eq 'Geometry' or $key eq 'geometryProperty') {
-                    my $type = $value->GeometryType;
-                    $type =~ s/M//;
-                    $type =~ s/Z//;
-                    $type =~ s/25D//;
-                    my $points = $value->Points;
-                    my $gml = '';
-                    if ($type eq 'Polygon') {
-                        my $exterior = $points->[0];
-                        $gml = '<gml:Polygon srsName="http://www.opengis.net/gml/srs/epsg.xml#3857" srsDimension="2"><gml:exterior>';
-                        $gml .= '<gml:LinearRing><gml:posList>';
-                        $_ = "@$_[0..1]" foreach @$exterior;
-                        $gml .= join(' ', @$exterior);
-                        $gml .= '</gml:posList></gml:LinearRing>';
-                        $gml .= '</gml:exterior></gml:Polygon>';
-                    }
-                    $output->element("$ns:geometry", $gml);
-                } else {
-                    $output->element("$ns:".lc($key), $value);
-                }
+    # for GML creation options see http://www.gdal.org/drv_gml.html
+    # for GeoJSON creation options see http://www.gdal.org/drv_geojson.html
+
+    # the FORMAT, TARGET_NAMESPACE, and PREFIX need to be set for OpenLayers
+    # the following has worked
+    # OpenLayers 2: FORMAT (not set), TARGET_NAMESPACE (http://ogr.maptools.org/), and PREFIX (ogr)
+    # OpenLayers 4: FORMAT (GML3), TARGET_NAMESPACE (http://www.opengis.net/gml), and PREFIX (ogr)
+
+    my %creation_options;
+    $creation_options{FORMAT} = $self->{request}{outputformat} // $self->{config}{FORMAT} // $type->{FORMAT} // 'GML2';
+    for my $format ($creation_options{FORMAT}) {
+        # convert some known values to those understood by GDAL
+        $format = $OutputFormats{$format} if $format && $OutputFormats{$format};
+        if ($format =~ /GML/) {
+            for my $key (@GDAL_GML_Creation_options) {
+                next if $key eq 'FORMAT';
+                next unless exists $self->{config}{$key} || exists $type->{$key};
+                $creation_options{$key} = $self->{config}{$key} // $type->{$key};
             }
-            $output->close_element;
-            $i++;
-            last if $i >= $count;
+            $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
+            $driver = Geo::OGR::Driver('GML');
+        } elsif ($format =~ /JSON/) {
+            $content_type = 'application/json; charset=utf-8';
+            $driver = Geo::OGR::Driver('GeoJSON');
+        } else {
+            $self->error({ exceptionCode => 'Error',
+                           locator => 'outputFormat',
+                           ExceptionText => "Format '$format' is not supported." });
+            return;
         }
-   
-        $output->close_element;
-        $output->close_element;
-        return;
     }
 
-    # query may have resulttype outputformat set
+    print STDERR "format is $creation_options{FORMAT}\n" if $self->{debug};
 
-    # note that OpenLayers does not seem to like the default target namespace, at least with outputFormat: "GML2"
-    # use "TARGET_NAMESPACE": "http://ogr.maptools.org/", "PREFIX": "ogr", in config or type section
-    my $ns = $self->{config}{TARGET_NAMESPACE} // $type->{TARGET_NAMESPACE} // 'http://www.opengis.net/wfs';
-    my $prefix = $self->{config}{PREFIX} // $type->{PREFIX} // 'wfs';
-    my $format = $self->{request}{outputformat} // $self->{config}{FORMAT} // 'GML3.2';
-    $format = $OutputFormats{$format} if $OutputFormats{$format};
-    print STDERR "Output format (for GDAL creation): $format\n" if $self->{debug} > 2;
-
-    my $content_type;
-    if ($format =~ /GML/) {
-        $content_type = $self->{config}{'Content-Type'} // 'text/xml; charset=utf-8';
-    } elsif ($format =~ /JSON/) {
-        $content_type = 'application/json; charset=utf-8';
-    }
-    my $output;
     my $writer = $self->{responder}->([200, [ 'Content-Type' => $content_type, $self->CORS ]]);
-    if ($format =~ /GML/) {
-        $output = Geo::OGR::Driver('GML')->Create($writer, {
-            TARGET_NAMESPACE => $ns, 
-            PREFIX => $prefix, 
-            FORMAT => $format,
-        });
-    } elsif ($format =~ /JSON/) {
-        $output = Geo::OGR::Driver('GeoJSON')->Create($writer);
-    }
+    my $output = Geo::OGR::Driver('GML')->Create($writer, \%creation_options );
+    
     my $l2 = $output->CreateLayer($type->{Name});
     my $d = $layer->GetLayerDefn;
     for (0..$d->GetFieldCount-1) {
@@ -672,9 +620,10 @@ sub GetFeature {
     while (my $f = $layer->GetNextFeature) {
         $l2->CreateFeature($f);
         $i++;
-        last if defined $count and $i >= $count;
+        last if defined $count and $i >= $count; 
     }
-    print STDERR "$i features served, max is ",$count//'not set',"\n" if $self->{debug};
+    
+    print STDERR "$i features served, max is $count\n" if $self->{debug};
 }
 
 =pod
@@ -733,6 +682,7 @@ sub Transaction {
         Replace => [],
         Delete => [] 
         );
+    my $version2 = $self->{version} =~ /^2/;
     for my $dbi (keys %$dbisql) {
         my ($db, $user, $pass) = split / /, $dbi;
         my $dbh = DBI->connect($db, $user, $pass);
@@ -747,9 +697,8 @@ sub Transaction {
                     if ($rows) {
                         my $id = '';
                         $id = $dbh->last_insert_id(undef, $table->{schema}, $table->{name}, undef) if $op eq 'Insert';
-                        push @{$results{$op}}, ['wfs:Feature', 
-                                                [['ogc:FeatureId', {fid => $id}],
-                                                 ['fes:ResourceId', {rid => $id}]]];
+                        my @id = $version2 ? ('fes:ResourceId' => {rid => $id}) : ('ogc:FeatureId' => {fid => $id});
+                        push @{$results{$op}}, ['wfs:Feature', [\@id]];
                         $rows{$op} += ($rows == 0) ? 1 : $rows;
                     } else {
                         $error .= $dbh->errstr;
@@ -769,15 +718,9 @@ sub Transaction {
     }
         
     my $writer = Geo::OGC::Service::XMLWriter::Caching->new();
-    $writer->open_element(
-        'TransactionResponse', 
-        { version => $self->{version},
-          'xmlns:ogc' => "http://www.opengis.net/ogc",
-          'xmlns:wfs' => "http://www.opengis.net/wfs/2.0",
-          'xmlns:fes' => "http://www.opengis.net/fes/2.0",
-          'xmlns:xsi' => "http://www.w3.org/2001/XMLSchema-instance",
-          'xsi:schemaLocation' => "http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0.0/wfs.xsd"
-        });
+    my %ns = $version2 ? (%wfs_2_0_0_ns) : (%wfs_1_1_0_ns);
+    $ns{version} = $self->{version};
+    $writer->open_element('wfs:TransactionResponse' => \%ns);
     $writer->element('wfs:TransactionSummary',
                      [['wfs:totalInserted' => $rows{Insert}],
                       ['wfs:totalUpdated' => $rows{Update}],
@@ -903,6 +846,10 @@ sub get_feature_type {
 # TO DO: make this boot time thing
 sub read_feature_type_list {
     my $self = shift;
+
+    # to do: basic config
+    $self->{config}{targetNamespace} //= $self->{config}{resource};
+    
     $self->{feature_types} = [];
     for my $type (@{$self->{config}{FeatureTypeList}}) {
         #say STDERR "process $type->{DataSource}";
@@ -1335,6 +1282,16 @@ sub pseudo_credentials {
     return ({$c1 => 1,$c2 => 1},$c1,$c2);
 }
 
+sub min {
+    my $retval = shift;
+    for my $x (@_) {
+        next unless defined $x;
+        $retval = $x unless defined $retval;
+        $retval = $x if $x < $retval;
+    }
+    return $retval;
+}
+
 1;
 __END__
 
@@ -1358,7 +1315,7 @@ Ari Jolma, E<lt>ari.jolma at gmail.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2015 by Ari Jolma
+Copyright (C) 2015- by Ari Jolma
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.22.0 or,
