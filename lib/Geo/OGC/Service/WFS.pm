@@ -85,13 +85,13 @@ our %type_map = (
     time => "xs:time",
     "time with time zone" => "xs:time",
     boolean => "xs:boolean",
-    );
+);
 
 our %well_known_w3_ns = (
     'xmlns:xlink' => "http://www.w3.org/1999/xlink",
     'xmlns:xs'    => "http://www.w3.org/2001/XMLSchema",
     'xmlns:xsi'   => "http://www.w3.org/2001/XMLSchema-instance",
-    );
+);
 
 our %wfs_1_1_0_ns = (
     %well_known_w3_ns,
@@ -101,7 +101,7 @@ our %wfs_1_1_0_ns = (
     'xmlns:ows' => "http://www.opengis.net/ows",
     'xmlns:ogc' => "http://www.opengis.net/ogc",
     'xsi:schemaLocation' => "http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd"
-    );
+);
 
 our %wfs_2_0_0_ns = (
     %well_known_w3_ns,
@@ -114,7 +114,7 @@ our %wfs_2_0_0_ns = (
     'xmlns:gmd' => "http://schemas.opengis.net/iso/19139/20060504/gmd/gmd.xsd",
     'xmlns:gco' => "http://schemas.opengis.net/iso/19139/20060504/gco/gco.xsd",
     'xsi:schemaLocation' => "http://www.opengis.net/wfs/2.0 http://schemas.opengis.net/wfs/2.0/wfs.xsd"
-    );
+);
 
 # Value in request => GDAL GML creation option
 our %OutputFormats = (
@@ -125,7 +125,7 @@ our %OutputFormats = (
     'GML3Deegree' => 'GML3Deegree',
     'application/gml+xml; version=3.2' => 'GML3.2',
     'application/json' => 'GeoJSON',
-    );
+);
 
 our @GDAL_GML_Creation_options = (qw/XSISCHEMAURI XSISCHEMA PREFIX
 STRIP_PREFIX TARGET_NAMESPACE FORMAT GML3_LONGSRS SRSNAME_FORMAT
@@ -286,7 +286,7 @@ sub OperationsMetadata  {
         ImplementsFeatureVersioning => 0,
         ManageStoredQueries => 0,
         PagingIsTransactionSafe => 1,
-        );
+    );
     for my $key (keys %constraints) {
         $writer->element('ows:Constraint', {name => $key}, 
                          [['ows:NoValues'], 
@@ -317,13 +317,19 @@ sub FeatureTypeList  {
             ['wfs:Abstract', $type->{Abstract}],
             ['wfs:DefaultSRS', $type->{DefaultSRS}],
             ['wfs:OtherSRS', 'EPSG:3857'],
-            ['wfs:OutputFormats', \@formats]);
-        push @FeatureType, ['ows:WGS84BoundingBox', {dimensions=>2}, 
-                            [['ows:LowerCorner',$type->{LowerCorner}],
-                             ['ows:UpperCorner',$type->{UpperCorner}]]]
-                                 if exists $type->{LowerCorner};
-        push @FeatureType, ['wfs:Operations', 
-                            [list2element('wfs:Operation', $type->{Operations})]] if exists $type->{Operations};
+            ['wfs:OutputFormats', \@formats]
+        );
+        push @FeatureType, [
+            'ows:WGS84BoundingBox', {dimensions => 2}, [
+                ['ows:LowerCorner',$type->{LowerCorner}],
+                ['ows:UpperCorner',$type->{UpperCorner}]
+            ]
+        ] if exists $type->{LowerCorner};
+        push @FeatureType, [
+            'wfs:Operations', [
+                list2element('wfs:Operation', $type->{Operations})
+            ]
+        ] if exists $type->{Operations};
         $writer->element('wfs:FeatureType', \@FeatureType);
     };
 
@@ -402,12 +408,13 @@ sub DescribeFeatureType {
             next if $pseudo_credentials->{$property};
 
             my $minOccurs = 0;
-            push @elements, ['element', 
-                             { name => $type->{Schema}{$property}{out_name},
-                               type => $type->{Schema}{$property}{out_type},
-                               minOccurs => "$minOccurs",
-                               maxOccurs => "1" } ];
-
+            push @elements, ['element', { 
+                name => $type->{Schema}{$property}{out_name},
+                type => $type->{Schema}{$property}{out_type},
+                minOccurs => "$minOccurs",
+                maxOccurs => "1" 
+            }];
+            
         }
         $writer->element(
             'complexType', {name => $type->{Name}.'Type'},
@@ -523,6 +530,7 @@ sub GetFeature {
             my $Column = '"'.$column.'"';
 
             my $name = $type->{table}{columns}{$column}{out_name};
+            $name = 'gml_id' if $column eq $gml_id;
             next if $query->{properties} && not $query->{properties}{$name};
             my $Name = '"'.$name.'"';
 
@@ -532,7 +540,6 @@ sub GetFeature {
                 # only one geometry property in the output
             } else {
                 $filter =~ s/$name/$column/g if $filter;
-                $name = 'gml_id' if $column eq $gml_id;
                 push @columns, "$Column as $Name";
             }
         }
