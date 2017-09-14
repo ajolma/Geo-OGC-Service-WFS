@@ -251,7 +251,7 @@ SKIP: {
         my $post = <<'end'; # almost actual XML sent by OpenLayers
 <?xml version="1.0"?>
 <wfs:GetFeature xmlns:wfs="http://www.opengis.net/wfs" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" service="WFS" version="1.1.0" outputFormat="GML2" xsi:schemaLocation="http://www.opengis.net/wfs http://schemas.opengis.net/wfs/1.1.0/wfs.xsd">
-  <wfs:Query typeName="feature:local.test_auth.geom">
+  <wfs:Query typeName="feature:public.test_auth.geom">
     <ogc:Filter xmlns:ogc="http://www.opengis.net/ogc">
       <ogc:And>
         <ogc:And>
