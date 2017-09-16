@@ -180,7 +180,9 @@ sub filter2sql {
     my ($ns, $name) = parse_tag($node);
 
     if ($name eq 'Literal') {
-        return "'".$node->firstChild->data."'";
+        my $child = $node->firstChild;
+        my $data = $child ? $child->data : '';
+        return "'".$data."'";
 
     } elsif ($name eq 'PropertyName') {
         my $ref = strip($node->textContent);
