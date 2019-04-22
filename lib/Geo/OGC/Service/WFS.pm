@@ -63,7 +63,7 @@ use Geo::OGC::Service::Filter ':all';
 use vars qw(@ISA);
 push @ISA, qw(Geo::OGC::Service::Filter);
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 # GDAL and PostgreSQL data type to XML data type
 our %type_map = (
