@@ -1210,6 +1210,8 @@ sub DataSource2dbi {
     my $dbi = $DataSource;
     $dbi =~ s/^pg/Pg/i;
     $dbi =~ s/ host/;host/;
+    $dbi =~ s/ port/;port/;
+    $dbi =~ s/ options/;options/;
     $dbi =~ s/user=//;
     $dbi =~ s/password=//;
     return 'dbi:'.$dbi;
